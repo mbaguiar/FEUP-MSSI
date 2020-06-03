@@ -409,15 +409,7 @@ to set-car-speed  ;; turtle procedure
   ifelse pcolor = red
   [ set speed 0 ]
   [
-    ifelse (member? patch-here roadsA) [
-        ifelse (member? patch-here upRoad)
-        [ set-speed 0 1 ]
-        [ set-speed 1 0 ]
-      ] [
-        ifelse (member? patch-here downRoad)
-        [ set-speed 0 -1 ]
-        [ set-speed -1 0 ]
-      ]
+
   ]
 end
 
