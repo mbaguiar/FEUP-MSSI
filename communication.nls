@@ -5,12 +5,12 @@
 ;;; Adapted to NetLogo 4 (2008) I. Sakellariou
 
 ;;; Requirements
-;;; All agents that are able to communicate MUST have a declated -own variable incoming-queue.
+;;; 1) All agents that are able to communicate MUST have a declated -own variable incoming-queue.
 ;;; This is the variable to which all messages are recorded. So, in your model if there is a breed of turtles 
 ;;; which you desire to communicate, then you should have a BREED-own [incoming-queue] declaration (along with any other 
 ;;; variables that you wish to include in your model.
 ;;; MAKE SURE that when you create the variables you set its values to empty list ([]).
-
+;;; 2) Your model should have a switch (check NetLogo manual) named "show_messages" 
 
 
 
@@ -30,9 +30,13 @@
 to send [msg]
   let recipients get-receivers msg
   let recv 0
-  foreach recipients [
-   set recv turtle (read-from-string ?)
-   if recv != nobody [without-interruption [ask recv [receive msg]]] ;; read-from-string is required to convert the string to number
+  foreach recipients [ recipient ->
+   set recv turtle (read-from-string recipient)
+   if recv != nobody [
+      without-interruption [ask recv [
+        receive msg
+      ]]
+   ]
   ]
 end
 
@@ -40,7 +44,7 @@ end
 ;;; Message reception deals with updating incoming-queue
 to receive [msg]
    if show_messages [show msg]
-   set incoming-queue lput msg incoming-queue
+  set incoming-queue lput msg incoming-queue
 end 
 
 ;; This reporter returns the next message in the list and removes it from the queue.
@@ -65,8 +69,8 @@ end
 
 ;; broadcasting to all agents of breed t-breed
 to broadcast-to [t-breed msg]
-  foreach [who] of t-breed [
-     send add-receiver ? msg    
+  foreach [who] of t-breed [ t-breeded ->
+     send add-receiver t-breeded msg    
   ]
 end 
 
@@ -88,7 +92,7 @@ end
 ;; Accesing information on Messages
 ;; Reports the sender of a message
 to-report get-sender [msg]
-  report remove "sender:" first (filter [not is-number? ? and member? "sender:" ?] msg) 
+  report remove "sender:" first (filter [s -> not is-number? s and member? "sender:" s] msg) 
   ;;report item ((position "sender:" msg) + 1) msg 
 end
 
@@ -99,7 +103,7 @@ end
 
 ;; Reports the list of receivers of a message
 to-report get-receivers [msg]
-  report map [remove "receiver:" ?] filter [not is-number? ? and member? "receiver:" ?] msg
+  report map [r -> remove "receiver:" r] filter [s -> not is-number? s and member? "receiver:" s] msg
 end 
 
 ;; reports the message performative. 
@@ -121,8 +125,8 @@ end
 ;; adding multiple recipients
 to-report add-multiple-receivers [receivers msg]
   foreach receivers
-  [
-    set msg add-receiver ? msg
+  [ receiver ->
+    set msg add-receiver receiver msg
   ]
   report msg
 end

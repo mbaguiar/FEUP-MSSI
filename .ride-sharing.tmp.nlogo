@@ -1,3 +1,5 @@
+__includes ["bdi.nls" "communication.nls"]
+
 breed [cars car]
 breed [people person]
 
@@ -52,10 +54,10 @@ people-own
   limit-wait-time
   share-ride?
 
-  start
+  pick-up
   goal
 
-  carpooler-car
+  ride-car
   carpooled
   response-received
 
@@ -129,14 +131,21 @@ to setup
     setup-cars
     set-car-color
     record-data
+    setup-car-goal
+
+    set current-path get-path
+    go-to-goal
   ]
 
   create-people num-people
   [
+    set-limit-wait-time
     setup-goal
+    set share-ride? true
     set color black
 
     setup-people
+    ask-for-ride
   ]
 
   ;; give the turtles an initial speed
@@ -145,9 +154,17 @@ to setup
   reset-ticks
 end
 
+to set-limit-wait-time
+  set limit-wait-time 1000
+end
+
 to setup-goal
-  set start one-of goal-candidates
-  set goal one-of goal-candidates with [ self != [ start ] of myself ]
+  set pick-up one-of goal-candidates
+  set goal one-of goal-candidates with [ self != [ pick-up ] of myself ]
+end
+
+to setup-car-goal
+  set goal one-of goal-candidates
 end
 
 ;; Initialize the global variables to appropriate values
@@ -254,6 +271,10 @@ end
 to setup-cars  ;; turtle procedure
   set speed 0
   set wait-time 0
+  set capacity 5
+  set passengers 0
+  set intentions []
+  set incoming-queue []
   put-on-empty-road
   ifelse intersection?
   [
@@ -273,10 +294,11 @@ to setup-cars  ;; turtle procedure
 end
 
 to setup-people
-  move-to start
+  move-to pick-up
+
 
   set response-received false
-  set carpooler-car nobody
+  set ride-car nobody
   set intentions []
   set incoming-queue []
 end
@@ -295,6 +317,7 @@ end
 to go
 
   update-current
+  ask turtles [execute-intentions]
 
   ;; have the intersections change their color
   set-signals
@@ -304,8 +327,6 @@ to go
   ;; record data for plotting, and set the color of the turtles to an appropriate color
   ;; based on their speed
   ask cars [
-    set-car-speed
-    fd speed
     record-data
     set-car-color
   ]
@@ -409,7 +430,15 @@ to set-car-speed  ;; turtle procedure
   ifelse pcolor = red
   [ set speed 0 ]
   [
-
+    ifelse (member? patch-here roadsA) [
+        ifelse (member? patch-here upRoad)
+        [ set-speed 0 1 ]
+        [ set-speed 1 0 ]
+      ] [
+        ifelse (member? patch-here downRoad)
+        [ set-speed 0 -1 ]
+        [ set-speed -1 0 ]
+      ]
   ]
 end
 
@@ -482,6 +511,237 @@ to next-phase
   if phase mod ticks-per-cycle = 0
     [ set phase 0 ]
 end
+
+to wait-for-responses
+  let msg get-message
+  if msg = "no_message" [stop]
+  let sender get-sender msg
+  if get-performative msg = "inform" [
+    if (get-content msg = "yes" and ride-car = nobody) [
+
+      set color yellow
+      set ride-car turtle (read-from-string sender)
+      set response-received true
+      set wait-time 0
+      add-intention "pick-me-up" "picked-up"
+      send add-content "yes" create-reply "request-ride" msg
+    ]
+    if (get-content msg = "no" and ride-car = nobody) [
+      set ride-car nobody
+      ;; ask-for-ride
+    ]
+  ]
+end
+
+to wait-for-messages
+  let msg get-message
+  if msg = "no_message" [stop]
+  let sender get-sender msg
+  if get-performative msg = "request-ride" and get-content msg = "share" [
+    ifelse (passengers + 1 < capacity) [
+      send add-content "yes" create-reply "inform" msg
+    ][
+      send add-content "no" create-reply "inform" msg
+    ]
+  ]
+  if get-performative msg = "request-ride" and get-content msg = "alone" [
+    ifelse (passengers = 0) [
+      send add-content "yes" create-reply "inform" msg
+    ][
+      send add-content "no" create-reply "inform" msg
+    ]
+  ]
+  if get-performative msg = "request-ride" and get-content msg = "yes" [
+    let number (read-from-string sender)
+    set goal ([pick-up] of turtle number)
+    set current-path get-path
+    set passengers passengers + 1
+  ]
+  if get-performative msg = "inform" [
+    if (get-content msg = "dropped-off") [
+      set passengers passengers - 1
+    ]
+  ]
+end
+
+to ask-for-ride
+  add-intention "find-a-ride" "ride-found"
+end
+
+to pick-me-up
+  let pickable-group [neighbors4] of ride-car
+  if member? patch-here pickable-group [
+    hide-turtle
+  ]
+end
+
+to leave-me-there
+  let pickable-group [neighbors4] of ride-car
+  if member? goal pickable-group [
+    move-to goal
+    set shape "person"
+    set color black
+    show-turtle
+  ]
+end
+
+to find-a-ride
+  let start-pos pick-up
+  set start-pos one-of ([ neighbors4 ] of pick-up) with [member? self roads]
+  let finish-pos goal
+  set finish-pos one-of ([neighbors4] of goal) with [member? self roads]
+
+  set response-received false
+  add-intention "wait-for-responses" "response-was-received"
+  let msg create-message "request-ride"
+  ifelse share-ride? [
+    set msg add-content "share" msg
+  ][
+    set msg add-content "alone" msg
+  ]
+  broadcast-to cars msg
+end
+
+to go-to-goal
+  add-intention "next-patch-to-goal" "at-goal"
+end
+
+to set-path
+  set current-path get-path
+  go-to-goal
+end
+
+to next-patch-to-goal
+  wait-for-messages
+  face next-patch
+  set-car-speed
+  fd speed
+end
+
+to-report next-patch
+  let choice item 0 current-path
+  report choice
+end
+
+to-report get-path
+  let path []
+  set path lput patch-here path
+  while [last path != goal] [
+    let current-patch last path
+    let patch-to-analyze current-patch
+    let index 1
+    while [not member? patch-to-analyze semaphores] [
+      if (member? patch-to-analyze [ neighbors4 ] of goal) [
+        set path lput patch-to-analyze path
+        report path
+      ]
+      set patch-to-analyze ifelse-value (member? patch-to-analyze roadsA) [
+        ifelse-value (member? patch-to-analyze upRoad)
+        [ ([patch-at 0 index] of current-patch) ]
+        [ ([patch-at index 0] of current-patch) ]
+      ] [
+        ifelse-value (member? patch-to-analyze downRoad)
+        [ ([patch-at 0 (index * -1)] of current-patch) ]
+        [ ([patch-at (index * -1) 0] of current-patch) ]
+      ]
+      set index index + 1
+
+      set path lput patch-to-analyze path
+    ]
+
+    let intersection (patch-set [patch-at -1 2] of patch-to-analyze [patch-at 1 1] of patch-to-analyze [patch-at -2 0] of patch-to-analyze [patch-at 0 -1] of patch-to-analyze) with [member? self intersections]
+    let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
+    let current-choices possible-goals with [ not member? self path or member? self intersection-patches ]
+    let semaphore-goal min-one-of current-choices [ distance [ goal ] of myself ]
+
+    set path get-path-at-intersection path patch-to-analyze semaphore-goal
+  ]
+  report path
+end
+
+to-report at-goal
+  if patch-here = (item 0 current-path) [
+    if member? patch-here [neighbors4] of goal [
+      ;; dar set no next goal
+      ;; set goal next-goal
+      ;; set-path
+      report true
+    ]
+    set current-path but-first current-path
+    go-to-goal
+    report true
+  ]
+  report false
+end
+
+to-report response-was-received
+  report response-received = true
+end
+
+to-report  ride-found
+  report ride-car != nobody
+end
+
+to-report picked-up
+  if (hidden?) [
+    add-intention "leave-me-there" "dropped-off"
+    report true
+  ]
+  report false
+end
+
+to-report dropped-off
+  if (hidden? = false) [
+    send add-receiver ([who] of ride-car) add-content "dropped-off" create-message "inform"
+    set ride-car nobody
+    report true
+  ]
+  report false
+end
+
+to-report get-path-at-intersection [intersection-path current-patch goal-patch]
+  let candidates ifelse-value (member? current-patch roadsA) [
+     ifelse-value (member? current-patch upRoad)
+    [(patch-set current-patch  ([patch-at 0 1] of current-patch) ([patch-at 0 2] of current-patch))]
+     [(patch-set current-patch ([patch-at 1 0] of current-patch) ([patch-at 2 0] of current-patch))]
+  ][
+    ifelse-value (member? current-patch downRoad)
+    [(patch-set current-patch ([patch-at 0 -1] of current-patch) ([patch-at 0 -2] of current-patch))]
+    [(patch-set current-patch ([patch-at -1 0] of current-patch) ([patch-at -2 0] of current-patch))]
+  ]
+  let direction ifelse-value (member? current-patch roadsA) [
+     ifelse-value (member? current-patch upRoad)
+    ["up"]
+     ["right"]
+  ][
+    ifelse-value (member? current-patch downRoad)
+    ["down"]
+    ["left"]
+  ]
+
+  let patch-to-analyze current-patch
+  while [patch-to-analyze != goal-patch][
+    ifelse member? patch-to-analyze candidates and patch-to-analyze != min-one-of candidates [ distance [ goal-patch ] of self ][
+      ifelse (direction = "up" or direction = "right") [
+        ifelse (direction = "up")
+        [ set intersection-path lput ([patch-at 0 1] of patch-to-analyze) intersection-path ]
+        [ set intersection-path lput ([patch-at 1 0] of patch-to-analyze) intersection-path ]
+      ] [
+        ifelse (direction = "down")
+        [ set intersection-path lput ([patch-at 0 -1] of patch-to-analyze) intersection-path ]
+        [ set intersection-path lput ([patch-at -1 0] of patch-to-analyze) intersection-path ]
+      ]
+    ][
+      let next ifelse-value (member? patch-to-analyze ([neighbors4] of goal-patch))
+      [ goal-patch ]
+      [ min-one-of ([neighbors4] of patch-to-analyze) [ distance [ goal-patch ] of self ] ]
+      set intersection-path lput next intersection-path
+    ]
+    set patch-to-analyze last intersection-path
+  ]
+  report intersection-path
+end
+
 
 
 ; Copyright 2003 Uri Wilensky.
@@ -600,7 +860,7 @@ num-cars
 num-cars
 1
 400
-25.0
+3.0
 1
 1
 NIL
@@ -768,11 +1028,33 @@ num-people
 num-people
 0
 100
-5.0
+1.0
 1
 1
 NIL
 HORIZONTAL
+
+SWITCH
+13
+390
+170
+423
+show_messages
+show_messages
+0
+1
+-1000
+
+SWITCH
+21
+437
+179
+470
+show-intentions
+show-intentions
+0
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
