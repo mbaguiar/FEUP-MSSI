@@ -40,6 +40,7 @@ cars-own
   capacity
   current-path
   goal
+  goals
 
   passengers
 
@@ -60,10 +61,12 @@ people-own
   ride-car
   carpooled
   response-received
+  has-ride?
 
   intentions
   beliefs
   incoming-queue
+  number-responses
 ]
 
 patches-own
@@ -275,6 +278,7 @@ to setup-cars  ;; turtle procedure
   set passengers 0
   set intentions []
   set incoming-queue []
+  set goals []
   put-on-empty-road
   ifelse intersection?
   [
@@ -296,11 +300,12 @@ end
 to setup-people
   move-to pick-up
 
-
+  set has-ride? false
   set response-received false
   set ride-car nobody
   set intentions []
   set incoming-queue []
+  set number-responses 0
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -516,20 +521,35 @@ to wait-for-responses
   let msg get-message
   if msg = "no_message" [stop]
   let sender get-sender msg
-  if get-performative msg = "inform" [
-    if (get-content msg = "yes" and ride-car = nobody) [
-      set color orange
-      set ride-car turtle (read-from-string sender)
-      set response-received true
-      set wait-time 0
-      add-intention "pick-me-up" "picked-up"
-      send add-content "yes" create-reply "request-ride" msg
+    if get-performative msg = "inform" [
+      if (get-content msg = "yes") [
+        ifelse ride-car = nobody [
+          set color orange
+          set ride-car turtle (read-from-string sender)
+          ;;set response-received true
+          set wait-time 0
+          send add-content "yes" create-reply "request-ride" msg
+
+          set number-responses number-responses + 1
+        ][
+          send add-content "no" create-reply "request-ride" msg
+          set number-responses number-responses + 1
+        ]
+      ]
+      if (get-content msg = "no") [
+        set number-responses number-responses + 1
+
+      ]
     ]
-    if (get-content msg = "no" and ride-car = nobody) [
-      set ride-car nobody
-      ;; ask-for-ride
+  if number-responses >= (count cars) [
+    set response-received true
+    ifelse ride-car = nobody [
+      ask-for-ride
+    ][
+      add-intention "pick-me-up" "picked-up"
     ]
   ]
+
 end
 
 to wait-for-messages
@@ -539,6 +559,7 @@ to wait-for-messages
   if get-performative msg = "request-ride" and get-content msg = "share" [
     ifelse (passengers + 1 < capacity) [
       send add-content "yes" create-reply "inform" msg
+      set passengers passengers + 1
     ][
       send add-content "no" create-reply "inform" msg
     ]
@@ -546,19 +567,25 @@ to wait-for-messages
   if get-performative msg = "request-ride" and get-content msg = "alone" [
     ifelse (passengers = 0) [
       send add-content "yes" create-reply "inform" msg
+      set passengers passengers + 1
     ][
       send add-content "no" create-reply "inform" msg
     ]
   ]
   if get-performative msg = "request-ride" and get-content msg = "yes" [
     let number (read-from-string sender)
-    set goal ([pick-up] of turtle number)
-    set current-path get-path
-    set passengers passengers + 1
+    set goals fput ([pick-up] of turtle number) goals
+    set goals lput ([goal] of turtle number) goals
+    show goals
+    set-path
+  ]
+  if get-performative msg = "request-ride" and get-content msg = "no" [
+    set passengers passengers - 1
   ]
   if get-performative msg = "inform" [
     if (get-content msg = "dropped-off") [
       set passengers passengers - 1
+      show passengers
     ]
   ]
 end
@@ -572,6 +599,7 @@ to pick-me-up
   if member? patch-here pickable-group [
     hide-turtle
   ]
+  set response-received true
 end
 
 to leave-me-there
@@ -585,11 +613,7 @@ to leave-me-there
 end
 
 to find-a-ride
-  let start-pos pick-up
-  set start-pos one-of ([ neighbors4 ] of pick-up) with [member? self roads]
-  let finish-pos goal
-  set finish-pos one-of ([neighbors4] of goal) with [member? self roads]
-
+  set number-responses 0
   set response-received false
   add-intention "wait-for-responses" "response-was-received"
   let msg create-message "request-ride"
@@ -599,6 +623,7 @@ to find-a-ride
     set msg add-content "alone" msg
   ]
   broadcast-to cars msg
+  set has-ride? true
 end
 
 to go-to-goal
@@ -606,6 +631,11 @@ to go-to-goal
 end
 
 to set-path
+  ifelse (empty? goals) [
+    set goal one-of goal-candidates
+  ][
+    set goal (item 0 goals)
+  ]
   set current-path get-path
   go-to-goal
 end
@@ -661,9 +691,10 @@ end
 to-report at-goal
   if patch-here = (item 0 current-path) [
     if member? patch-here [neighbors4] of goal [
-      ;; dar set no next goal
-      ;; set goal next-goal
-      ;; set-path
+      if (not empty? goals) [
+        set goals remove-item 0 goals
+      ]
+      set-path
       report true
     ]
     set current-path but-first current-path
@@ -678,7 +709,7 @@ to-report response-was-received
 end
 
 to-report  ride-found
-  report ride-car != nobody
+  report has-ride?
 end
 
 to-report picked-up
@@ -692,6 +723,7 @@ end
 to-report dropped-off
   if (hidden? = false) [
     send add-receiver ([who] of ride-car) add-content "dropped-off" create-message "inform"
+    set color blue
     set ride-car nobody
     report true
   ]
@@ -858,8 +890,8 @@ SLIDER
 num-cars
 num-cars
 1
-400
-3.0
+100
+2.0
 1
 1
 NIL
@@ -1027,7 +1059,7 @@ num-people
 num-people
 0
 100
-1.0
+10.0
 1
 1
 NIL
@@ -1040,7 +1072,7 @@ SWITCH
 423
 show_messages
 show_messages
-0
+1
 1
 -1000
 
@@ -1051,7 +1083,7 @@ SWITCH
 470
 show-intentions
 show-intentions
-0
+1
 1
 -1000
 
