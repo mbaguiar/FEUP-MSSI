@@ -134,7 +134,7 @@ to setup
     stop
   ]
 
-  ;; Now create the turtles and have each created turtle call the functions setup-cars and set-car-color
+  ;; Create the drivers turtles
   create-drivers num-drivers
   [
     setup-drivers
@@ -146,6 +146,7 @@ to setup
     go-to-goal
   ]
 
+  ;; Create the passengers turtles
   create-passengers num-max-passengers
   [
     set-limit-wait-time
@@ -163,6 +164,7 @@ to setup
   reset-ticks
 end
 
+;; Setup if passenger wants to share ride or not
 to setup-ride-choice
   ifelse ((random 100) + 1) < share-ride-probability
   [
@@ -174,15 +176,20 @@ to setup-ride-choice
   ]
 end
 
+;; Setup max time passengers is willing to wait for trip
+;; Placeholder - to be replated by limit drop off time based on optimal time and threshold
 to set-limit-wait-time
   set limit-wait-time 1000
 end
 
+;; Set randomnly pickup patch of passenger
+;; Set randomnly drop off patch of passenger
 to setup-goal
   set pick-up one-of goal-candidates
   set goal one-of goal-candidates with [ self != [ pick-up ] of myself ]
 end
 
+;; Set randomnly initial patch goal of driver (for when driver has no passengers)
 to setup-driver-goal
   set goal one-of goal-candidates
 end
@@ -288,8 +295,8 @@ to setup-intersections
   ]
 end
 
-;; Initialize the turtle variables to appropriate values and place the turtle on an empty road patch.
-to setup-drivers  ;; turtle procedure
+;; Initialize the driver variables to appropriate values and place the driver on an empty road patch.
+to setup-drivers
   set speed 0
   set capacity 5
   set passengers-number 0
@@ -315,6 +322,7 @@ to setup-drivers  ;; turtle procedure
   [ set heading 90 ]
 end
 
+;; Initialize the passenger variavles to appropriate values
 to setup-passengers
   move-to pick-up
 
@@ -479,7 +487,8 @@ to next-phase
     [ set phase 0 ]
 end
 
-to wait-for-responses
+;; Passenger waits for messages and responds to drivers
+to wait-for-messages-passenger
   let msg get-message
   if msg = "no_message" [stop]
   let sender get-sender msg
@@ -513,7 +522,8 @@ to wait-for-responses
 
 end
 
-to wait-for-messages
+;; Driver waits for messages and responds passengers
+to wait-for-messages-driver
   let msg get-message
   if msg = "no_message" [stop]
   let sender get-sender msg
@@ -554,10 +564,12 @@ to wait-for-messages
   ]
 end
 
+;; Add find a ride intention to passenger
 to ask-for-ride
   add-intention "find-a-ride" "ride-found"
 end
 
+;; Check if a driver can pick (me) a passenger up
 to pick-me-up
   let pickable-group [neighbors4] of driver-car
   if member? patch-here pickable-group [
@@ -566,6 +578,7 @@ to pick-me-up
   set response-received true
 end
 
+;; Check if a driver can drop (me) a passenger off
 to leave-me-there
   let pickable-group [neighbors4] of driver-car
   if member? goal pickable-group [
@@ -576,11 +589,13 @@ to leave-me-there
   ]
 end
 
+;; Executes when intention find a ride is added
+;; Passenger requests trip and waits for messages from drivers
 to find-a-ride
   set temp-wait-time ticks
   set number-responses 0
   set response-received false
-  add-intention "wait-for-responses" "response-was-received"
+  add-intention "wait-for-messages-passenger" "response-was-received"
   let msg create-message "request-ride"
   ifelse share-ride? [
     set msg add-content "share" msg
@@ -591,10 +606,12 @@ to find-a-ride
   set has-ride? true
 end
 
+;; Add intention to drivers to move to next patch in path to current goal
 to go-to-goal
   add-intention "next-patch-to-goal" "at-goal"
 end
 
+;; Sets driver's current path
 to set-path
   ifelse (empty? goals) [
     set goal one-of goal-candidates
@@ -605,18 +622,21 @@ to set-path
   go-to-goal
 end
 
+;; Executes when intention next patch to goal is added
 to next-patch-to-goal
-  wait-for-messages
+  wait-for-messages-driver
   face next-patch
   set-car-speed
   fd speed
 end
 
+;; Return driver's path next patch
 to-report next-patch
   let choice item 0 current-path
   report choice
 end
 
+;; Compute path between driver current position and current goal
 to-report get-path
   let path []
   set path lput patch-here path
@@ -653,6 +673,8 @@ to-report get-path
   report path
 end
 
+;; Checks if driver is at current goal
+;; If true intention go to goal is completed
 to-report at-goal
   if patch-here = (item 0 current-path) [
     if member? patch-here [neighbors4] of goal [
@@ -669,14 +691,20 @@ to-report at-goal
   report false
 end
 
+;; Checks if passenger received response
+;; If true wait-for-messages-passenger intention is completed
 to-report response-was-received
   report response-received = true
 end
 
+;; Checks if passenger already has an assigned ride
+;; If true intention find-a-ride is completed
 to-report  ride-found
   report has-ride?
 end
 
+;; Checks if passenger was picked up by driver
+;; If true pick-me-up intention is completed
 to-report picked-up
   if (hidden?) [
     set wait-time (ticks - temp-wait-time)
@@ -688,6 +716,8 @@ to-report picked-up
   report false
 end
 
+;; Checks if passenger was dropped off by driver
+;; If true leave-me-there intention is completed
 to-report dropped-off
   if (hidden? = false) [
     set travel-time (ticks - temp-travel-time)
@@ -707,6 +737,7 @@ to-report dropped-off
   report false
 end
 
+;; Auxiliary function to get-path
 to-report get-path-at-intersection [intersection-path current-patch goal-patch]
   let candidates ifelse-value (member? current-patch roadsA) [
      ifelse-value (member? current-patch upRoad)
@@ -750,6 +781,7 @@ to-report get-path-at-intersection [intersection-path current-patch goal-patch]
   report intersection-path
 end
 
+;; Returns number of drivers with maximum capacity
 to-report get-number-drivers-max
   let num 0
   ask drivers [
