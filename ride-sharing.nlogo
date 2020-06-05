@@ -75,6 +75,8 @@ passengers-own
 
   temp-wait-time
   temp-travel-time
+
+  wait-before-die
 ]
 
 patches-own
@@ -144,18 +146,6 @@ to setup
 
     set current-path get-path
     go-to-goal
-  ]
-
-  ;; Create the passengers turtles
-  create-passengers num-max-passengers
-  [
-    set-limit-wait-time
-    setup-goal
-    set color black
-    setup-ride-choice
-
-    setup-passengers
-    ask-for-ride
   ]
 
   ;; give the turtles an initial speed
@@ -334,6 +324,7 @@ to setup-passengers
   set number-responses 0
   set temp-wait-time 0
   set wait-time 0
+  set wait-before-die 0
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -348,6 +339,21 @@ end
 
 ;; Run the simulation
 to go
+
+  ;; Create the passengers turtles
+  if (ticks mod passenger-spawn-rate) = 0 and (count passengers) < num-max-passengers [
+    create-passengers 1
+    [
+      set-limit-wait-time
+      setup-goal
+      set color black
+      setup-ride-choice
+
+      setup-passengers
+      ask-for-ride
+    ]
+  ]
+
   ask turtles [execute-intentions]
 
   ;; have the intersections change their color
@@ -360,6 +366,15 @@ to go
   ask drivers [
     record-data
     set-driver-color
+  ]
+
+  ask passengers [
+    if color = blue [
+      if wait-before-die > 100 [
+        die
+      ]
+      set wait-before-die wait-before-die + 1
+    ]
   ]
 
   ;; update the phase and the global clock
@@ -1024,9 +1039,9 @@ HORIZONTAL
 
 SWITCH
 13
-379
+421
 170
-412
+454
 show_messages
 show_messages
 1
@@ -1035,9 +1050,9 @@ show_messages
 
 SWITCH
 12
-418
+460
 170
-451
+493
 show-intentions
 show-intentions
 1
@@ -1076,9 +1091,9 @@ HORIZONTAL
 
 SWITCH
 13
-341
+383
 168
-374
+416
 distributed
 distributed
 0
@@ -1131,6 +1146,21 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot 0"
+
+SLIDER
+12
+340
+292
+373
+passenger-spawn-rate
+passenger-spawn-rate
+30
+3000
+30.0
+30
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
