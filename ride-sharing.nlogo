@@ -32,19 +32,21 @@ globals
   semaphore-goals
 
   number-completed-trips
+  number-shared-trips
+  number-individual-trips
 ]
 
 drivers-own
 [
   speed     ;; the speed of the turtle
   up-car?   ;; true if the turtle moves downwards and false if it moves to the right
-  wait-time ;; the amount of time since the last time a turtle has moved
   capacity
   current-path
   goal
   goals
 
   passengers-number
+  num-in-car
 
   intentions
   beliefs
@@ -54,6 +56,7 @@ drivers-own
 passengers-own
 [
   wait-time
+  travel-time
   limit-wait-time
   share-ride?
 
@@ -69,6 +72,9 @@ passengers-own
   beliefs
   incoming-queue
   number-responses
+
+  temp-wait-time
+  temp-travel-time
 ]
 
 patches-own
@@ -164,7 +170,7 @@ to setup-ride-choice
 
   ][
     set share-ride? false
-    set color pink
+    set color magenta
   ]
 end
 
@@ -186,6 +192,7 @@ to setup-globals
   set current-light nobody ;; just for now, since there are no lights yet
   set phase 0
   set num-cars-stopped 0
+  set number-completed-trips 0
   set grid-x-inc world-width / grid-size-x
   set grid-y-inc world-height / grid-size-y
 
@@ -284,9 +291,9 @@ end
 ;; Initialize the turtle variables to appropriate values and place the turtle on an empty road patch.
 to setup-drivers  ;; turtle procedure
   set speed 0
-  set wait-time 0
   set capacity 5
   set passengers-number 0
+  set num-in-car 0
   set intentions []
   set incoming-queue []
   set goals []
@@ -317,6 +324,8 @@ to setup-passengers
   set intentions []
   set incoming-queue []
   set number-responses 0
+  set temp-wait-time 0
+  set wait-time 0
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -448,12 +457,10 @@ end
 ;; keep track of the number of stopped turtles and the amount of time a turtle has been stopped
 ;; if its speed is 0
 to record-data  ;; turtle procedure
-  ifelse speed = 0
+  if speed = 0
   [
     set num-cars-stopped num-cars-stopped + 1
-    set wait-time wait-time + 1
   ]
-  [ set wait-time 0 ]
 end
 
 to change-current
@@ -482,7 +489,6 @@ to wait-for-responses
           set color orange
           set driver-car turtle (read-from-string sender)
           ;;set response-received true
-          set wait-time 0
           send add-content "yes" create-reply "request-ride" msg
 
           set number-responses number-responses + 1
@@ -540,7 +546,10 @@ to wait-for-messages
   if get-performative msg = "inform" [
     if (get-content msg = "dropped-off") [
       set passengers-number passengers-number - 1
-      show passengers-number
+      set num-in-car num-in-car - 1
+    ]
+    if (get-content msg = "picked-up") [
+      set num-in-car num-in-car + 1
     ]
   ]
 end
@@ -568,6 +577,7 @@ to leave-me-there
 end
 
 to find-a-ride
+  set temp-wait-time ticks
   set number-responses 0
   set response-received false
   add-intention "wait-for-responses" "response-was-received"
@@ -669,7 +679,10 @@ end
 
 to-report picked-up
   if (hidden?) [
+    set wait-time (ticks - temp-wait-time)
+    set temp-travel-time ticks
     add-intention "leave-me-there" "dropped-off"
+    send add-receiver ([who] of driver-car) add-content "picked-up" create-message "inform"
     report true
   ]
   report false
@@ -677,9 +690,18 @@ end
 
 to-report dropped-off
   if (hidden? = false) [
+    set travel-time (ticks - temp-travel-time)
+    show travel-time
     send add-receiver ([who] of driver-car) add-content "dropped-off" create-message "inform"
     set color blue
     set driver-car nobody
+    set number-completed-trips number-completed-trips + 1
+    ifelse share-ride? = true
+    [
+      set number-shared-trips number-shared-trips + 1
+    ][
+      set number-individual-trips number-individual-trips + 1
+    ]
     report true
   ]
   report false
@@ -728,7 +750,15 @@ to-report get-path-at-intersection [intersection-path current-patch goal-patch]
   report intersection-path
 end
 
-
+to-report get-number-drivers-max
+  let num 0
+  ask drivers [
+    if num-in-car + 1 = capacity [
+      set num num + 1
+    ]
+  ]
+  report num
+end
 
 ; Copyright 2003 Uri Wilensky.
 ; See Info tab for full copyright and license.
@@ -761,13 +791,13 @@ ticks
 30.0
 
 PLOT
-1166
-175
-1384
-339
-Average Wait Time of Cars
+923
+269
+1235
+433
+Average Travel Time for Passengers
 Time
-Average Wait
+Average Travel Time
 0.0
 100.0
 0.0
@@ -776,25 +806,25 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of turtles"
+"default" 1.0 0 -16777216 true "" "plot mean [travel-time] of passengers"
 
 PLOT
-942
-349
-1158
-514
-Average Speed of Cars
+922
+94
+1234
+259
+Ratio between shared rides and individual rides
 Time
-Average Speed
+shared/individual
 0.0
 100.0
 0.0
 1.0
 true
 false
-"set-plot-y-range 0 speed-limit" ""
+"set-plot-y-range 0 5" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [speed] of turtles"
+"default" 1.0 0 -16777216 true "" "plot (number-shared-trips + 1) / (number-individual-trips + 1)"
 
 SLIDER
 108
@@ -846,29 +876,29 @@ num-drivers
 num-drivers
 1
 100
-1.0
+2.0
 1
 1
 NIL
 HORIZONTAL
 
 PLOT
-1283
-480
-1497
-644
-Stopped Cars
+924
+445
+1236
+609
+Percentage of drivers with max capacity
 Time
-Stopped Cars
+Percentage
 0.0
 100.0
 0.0
 100.0
 true
 false
-"set-plot-y-range 0 num-cars" ""
+"set-plot-y-range 0 100" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot num-cars-stopped"
+"default" 1.0 0 -16777216 true "" "plot (get-number-drivers-max / num-drivers) * 100"
 
 BUTTON
 227
@@ -954,7 +984,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-10.0
+38.0
 1
 1
 NIL
@@ -991,7 +1021,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-50.0
+51.0
 1
 1
 NIL
@@ -1024,15 +1054,51 @@ distributed
 -1000
 
 MONITOR
-919
+921
 36
-1098
+1234
 81
 Number of completed trips
 number-completed-trips
 17
 1
 11
+
+PLOT
+1249
+93
+1560
+259
+Average Wait Time for Passengers
+Time
+Average Wait Time
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of passengers"
+
+PLOT
+1248
+268
+1562
+431
+Average ratio TT/OTT
+TT/OTT
+Time
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot 0"
 
 @#$#@#$#@
 ## WHAT IS IT?
