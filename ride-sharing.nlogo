@@ -1,7 +1,7 @@
 __includes ["bdi.nls" "communication.nls"]
 
-breed [cars car]
-breed [people person]
+breed [drivers driver]
+breed [passengers passenger]
 
 globals
 [
@@ -30,9 +30,11 @@ globals
 
   semaphores
   semaphore-goals
+
+  number-completed-trips
 ]
 
-cars-own
+drivers-own
 [
   speed     ;; the speed of the turtle
   up-car?   ;; true if the turtle moves downwards and false if it moves to the right
@@ -42,14 +44,14 @@ cars-own
   goal
   goals
 
-  passengers
+  passengers-number
 
   intentions
   beliefs
   incoming-queue
 ]
 
-people-own
+passengers-own
 [
   wait-time
   limit-wait-time
@@ -58,7 +60,7 @@ people-own
   pick-up
   goal
 
-  ride-car
+  driver-car
   carpooled
   response-received
   has-ride?
@@ -98,11 +100,9 @@ to setup
 
   ;; First we ask the patches to draw themselves and set up a few variables
   setup-patches
-  make-current one-of intersections
-  label-current
 
-  set-default-shape cars "car"
-  set-default-shape people "person"
+  set-default-shape drivers "car"
+  set-default-shape passengers "person"
 
   set goal-candidates patches with [
     pcolor = 38 and any? neighbors with [ pcolor = white ]
@@ -117,7 +117,7 @@ to setup
     member? patch-at 0 0 intersections
   ]
 
-  if (num-cars > count roads)
+  if (num-drivers > count roads)
   [
     user-message (word "There are too many cars for the amount of "
                        "road.  Either increase the amount of roads "
@@ -129,32 +129,43 @@ to setup
   ]
 
   ;; Now create the turtles and have each created turtle call the functions setup-cars and set-car-color
-  create-cars num-cars
+  create-drivers num-drivers
   [
-    setup-cars
-    set-car-color
+    setup-drivers
+    set-driver-color
     record-data
-    setup-car-goal
+    setup-driver-goal
 
     set current-path get-path
     go-to-goal
   ]
 
-  create-people num-people
+  create-passengers num-max-passengers
   [
     set-limit-wait-time
     setup-goal
-    set share-ride? true
     set color black
+    setup-ride-choice
 
-    setup-people
+    setup-passengers
     ask-for-ride
   ]
 
   ;; give the turtles an initial speed
-  ask cars [ set-car-speed ]
+  ask drivers [ set-car-speed ]
 
   reset-ticks
+end
+
+to setup-ride-choice
+  ifelse ((random 100) + 1) < share-ride-probability
+  [
+    set share-ride? true
+
+  ][
+    set share-ride? false
+    set color pink
+  ]
 end
 
 to set-limit-wait-time
@@ -166,7 +177,7 @@ to setup-goal
   set goal one-of goal-candidates with [ self != [ pick-up ] of myself ]
 end
 
-to setup-car-goal
+to setup-driver-goal
   set goal one-of goal-candidates
 end
 
@@ -271,11 +282,11 @@ to setup-intersections
 end
 
 ;; Initialize the turtle variables to appropriate values and place the turtle on an empty road patch.
-to setup-cars  ;; turtle procedure
+to setup-drivers  ;; turtle procedure
   set speed 0
   set wait-time 0
   set capacity 5
-  set passengers 0
+  set passengers-number 0
   set intentions []
   set incoming-queue []
   set goals []
@@ -297,12 +308,12 @@ to setup-cars  ;; turtle procedure
   [ set heading 90 ]
 end
 
-to setup-people
+to setup-passengers
   move-to pick-up
 
   set has-ride? false
   set response-received false
-  set ride-car nobody
+  set driver-car nobody
   set intentions []
   set incoming-queue []
   set number-responses 0
@@ -310,7 +321,7 @@ end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
 to put-on-empty-road  ;; turtle procedure
-  move-to one-of roads with [not any? cars-on self]
+  move-to one-of roads with [not any? drivers-on self]
 end
 
 
@@ -320,8 +331,6 @@ end
 
 ;; Run the simulation
 to go
-
-  update-current
   ask turtles [execute-intentions]
 
   ;; have the intersections change their color
@@ -331,68 +340,14 @@ to go
   ;; set the turtles speed for this time thru the procedure, move them forward their speed,
   ;; record data for plotting, and set the color of the turtles to an appropriate color
   ;; based on their speed
-  ask cars [
+  ask drivers [
     record-data
-    set-car-color
+    set-driver-color
   ]
 
   ;; update the phase and the global clock
   next-phase
   tick
-end
-
-to choose-current
-  if mouse-down?
-  [
-    let x-mouse mouse-xcor
-    let y-mouse mouse-ycor
-    if [intersection?] of patch x-mouse y-mouse
-    [
-      update-current
-      unlabel-current
-      make-current patch x-mouse y-mouse
-      label-current
-      stop
-    ]
-  ]
-end
-
-;; Set up the current light and the interface to change it.
-to make-current [light]
-  set current-light light
-  set current-phase [my-phase] of current-light
-  set current-auto? [auto?] of current-light
-end
-
-;; update the variables for the current light
-to update-current
-  ask current-light [
-    set my-phase current-phase
-    set auto? current-auto?
-  ]
-end
-
-;; label the current light
-to label-current
-  ask current-light
-  [
-    ask patch-at -1 1
-    [
-      set plabel-color black
-      set plabel "current"
-    ]
-  ]
-end
-
-;; unlabel the current light (because we've chosen a new one)
-to unlabel-current
-  ask current-light
-  [
-    ask patch-at -1 1
-    [
-      set plabel ""
-    ]
-  ]
 end
 
 ;; have the traffic lights change color if phase equals each intersections' my-phase
@@ -451,7 +406,7 @@ end
 ;; speed limit) based on whether there are cars on the patch in front of the car
 to set-speed [ delta-x delta-y ]  ;; turtle procedure
   ;; get the turtles on the patch in front of the turtle
-  let cars-ahead cars-at delta-x delta-y
+  let cars-ahead drivers-at delta-x delta-y
 
   ;; if there are turtles in front of the turtle, slow down
   ;; otherwise, speed up
@@ -484,7 +439,7 @@ to speed-up  ;; turtle procedure
 end
 
 ;; set the color of the turtle to a different color based on how fast the turtle is moving
-to set-car-color  ;; turtle procedure
+to set-driver-color  ;; turtle procedure
   ifelse speed < (speed-limit / 2)
   [ set color blue ]
   [ set color cyan - 2 ]
@@ -523,9 +478,9 @@ to wait-for-responses
   let sender get-sender msg
     if get-performative msg = "inform" [
       if (get-content msg = "yes") [
-        ifelse ride-car = nobody [
+        ifelse driver-car = nobody [
           set color orange
-          set ride-car turtle (read-from-string sender)
+          set driver-car turtle (read-from-string sender)
           ;;set response-received true
           set wait-time 0
           send add-content "yes" create-reply "request-ride" msg
@@ -541,9 +496,9 @@ to wait-for-responses
 
       ]
     ]
-  if number-responses >= (count cars) [
+  if number-responses >= (count drivers) [
     set response-received true
-    ifelse ride-car = nobody [
+    ifelse driver-car = nobody [
       ask-for-ride
     ][
       add-intention "pick-me-up" "picked-up"
@@ -557,17 +512,17 @@ to wait-for-messages
   if msg = "no_message" [stop]
   let sender get-sender msg
   if get-performative msg = "request-ride" and get-content msg = "share" [
-    ifelse (passengers + 1 < capacity) [
+    ifelse (passengers-number + 1 < capacity) [
       send add-content "yes" create-reply "inform" msg
-      set passengers passengers + 1
+      set passengers-number passengers-number + 1
     ][
       send add-content "no" create-reply "inform" msg
     ]
   ]
   if get-performative msg = "request-ride" and get-content msg = "alone" [
-    ifelse (passengers = 0) [
+    ifelse (passengers-number = 0) [
       send add-content "yes" create-reply "inform" msg
-      set passengers passengers + 1
+      set passengers-number passengers-number + 1
     ][
       send add-content "no" create-reply "inform" msg
     ]
@@ -580,12 +535,12 @@ to wait-for-messages
     set-path
   ]
   if get-performative msg = "request-ride" and get-content msg = "no" [
-    set passengers passengers - 1
+    set passengers-number passengers-number - 1
   ]
   if get-performative msg = "inform" [
     if (get-content msg = "dropped-off") [
-      set passengers passengers - 1
-      show passengers
+      set passengers-number passengers-number - 1
+      show passengers-number
     ]
   ]
 end
@@ -595,7 +550,7 @@ to ask-for-ride
 end
 
 to pick-me-up
-  let pickable-group [neighbors4] of ride-car
+  let pickable-group [neighbors4] of driver-car
   if member? patch-here pickable-group [
     hide-turtle
   ]
@@ -603,7 +558,7 @@ to pick-me-up
 end
 
 to leave-me-there
-  let pickable-group [neighbors4] of ride-car
+  let pickable-group [neighbors4] of driver-car
   if member? goal pickable-group [
     move-to goal
     set shape "person"
@@ -622,7 +577,7 @@ to find-a-ride
   ][
     set msg add-content "alone" msg
   ]
-  broadcast-to cars msg
+  broadcast-to drivers msg
   set has-ride? true
 end
 
@@ -722,9 +677,9 @@ end
 
 to-report dropped-off
   if (hidden? = false) [
-    send add-receiver ([who] of ride-car) add-content "dropped-off" create-message "inform"
+    send add-receiver ([who] of driver-car) add-content "dropped-off" create-message "inform"
     set color blue
-    set ride-car nobody
+    set driver-car nobody
     report true
   ]
   report false
@@ -779,10 +734,10 @@ end
 ; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
-327
-19
-929
-622
+309
+34
+911
+637
 -1
 -1
 16.0541
@@ -806,10 +761,10 @@ ticks
 30.0
 
 PLOT
-476
-655
-694
-819
+1166
+175
+1384
+339
 Average Wait Time of Cars
 Time
 Average Wait
@@ -824,10 +779,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot mean [wait-time] of turtles"
 
 PLOT
-233
-654
-449
-819
+942
+349
+1158
+514
 Average Speed of Cars
 Time
 Average Speed
@@ -850,7 +805,7 @@ grid-size-y
 grid-size-y
 1
 9
-6.0
+4.0
 1
 1
 NIL
@@ -865,17 +820,17 @@ grid-size-x
 grid-size-x
 1
 9
-6.0
+4.0
 1
 1
 NIL
 HORIZONTAL
 
 SWITCH
-12
-107
-107
-140
+13
+147
+108
+180
 power?
 power?
 0
@@ -887,21 +842,21 @@ SLIDER
 71
 293
 104
-num-cars
-num-cars
+num-drivers
+num-drivers
 1
 100
-2.0
+1.0
 1
 1
 NIL
 HORIZONTAL
 
 PLOT
-0
-652
-214
-816
+1283
+480
+1497
+644
 Stopped Cars
 Time
 Stopped Cars
@@ -916,10 +871,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot num-cars-stopped"
 
 BUTTON
-221
-184
-285
-217
+227
+200
+291
+233
 Go
 go
 T
@@ -950,25 +905,25 @@ NIL
 1
 
 SLIDER
-11
-177
-165
-210
+12
+222
+166
+255
 speed-limit
 speed-limit
 0.1
 1
-0.1
+0.2
 0.1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-205
-132
-310
-177
+188
+147
+293
+192
 Current Phase
 phase
 3
@@ -976,10 +931,10 @@ phase
 11
 
 SLIDER
-11
-143
-165
-176
+13
+185
+167
+218
 ticks-per-cycle
 ticks-per-cycle
 1
@@ -991,72 +946,12 @@ NIL
 HORIZONTAL
 
 SLIDER
-146
-256
-302
-289
-current-phase
-current-phase
-0
-99
-0.0
-1
-1
-%
-HORIZONTAL
-
-BUTTON
-9
-292
-143
-325
-Change light
-change-current
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-0
-
-SWITCH
-9
-256
-144
-289
-current-auto?
-current-auto?
-0
-1
--1000
-
-BUTTON
-145
-292
-300
-325
-Select intersection
-choose-current
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-0
-
-SLIDER
-10
-349
-182
-382
-num-people
-num-people
+12
+109
+294
+142
+num-max-passengers
+num-max-passengers
 0
 100
 10.0
@@ -1067,9 +962,9 @@ HORIZONTAL
 
 SWITCH
 13
-390
+379
 170
-423
+412
 show_messages
 show_messages
 1
@@ -1077,15 +972,67 @@ show_messages
 -1000
 
 SWITCH
-21
-437
-179
-470
+12
+418
+170
+451
 show-intentions
 show-intentions
 1
 1
 -1000
+
+SLIDER
+12
+261
+292
+294
+share-ride-probability
+share-ride-probability
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+12
+300
+293
+333
+limit-time-threshold-percentage
+limit-time-threshold-percentage
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
+
+SWITCH
+13
+341
+168
+374
+distributed
+distributed
+0
+1
+-1000
+
+MONITOR
+919
+36
+1098
+81
+Number of completed trips
+number-completed-trips
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
