@@ -2,6 +2,7 @@ __includes ["bdi.nls" "communication.nls"]
 
 breed [drivers driver]
 breed [passengers passenger]
+breed [dispatchers dispatcher]
 
 globals
 [
@@ -97,6 +98,16 @@ passengers-own
   wait-tries
 ]
 
+dispatchers-own
+[
+  intentions
+  incoming-queue
+  processing-queue
+
+  is-processing?
+  collection-start-tick
+]
+
 patches-own
 [
   intersection?   ;; true if the patch is at the intersection of two roads
@@ -164,6 +175,13 @@ to setup
 
     set current-path get-path patch-here goal
     go-to-goal
+  ]
+
+  ;; Create the dispatcher
+  if not distributed [
+    create-dispatchers 1 [
+      setup-dispatcher
+    ]
   ]
 
   ;; give the turtles an initial speed
@@ -343,7 +361,7 @@ to setup-drivers
   [ set heading 90 ]
 end
 
-;; Initialize the passenger variavles to appropriate values
+;; Initialize the passenger variables to appropriate values
 to setup-passengers
   move-to pick-up
 
@@ -358,6 +376,16 @@ to setup-passengers
   set wait-before-die 0
   set num-tries 0
   set wait-tries 0
+end
+
+;; Initialize the dispatcher variables to appropriate values
+to setup-dispatcher
+  set intentions []
+  set incoming-queue []
+  set processing-queue []
+  set is-processing? false
+  set collection-start-tick 0
+  hide-turtle
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -411,6 +439,8 @@ to go
       set wait-before-die wait-before-die + 1
     ]
   ]
+
+  if not distributed [ ask dispatchers [ collect-msgs ] ]
 
   ;; update the phase and the global clock
   next-phase
@@ -548,8 +578,10 @@ to wait-for-messages-passenger
   if (num-tries >= 3) [
     set number-cancel-trips number-cancel-trips + 1
     die
-   ]
-  ifelse number-responses < count drivers [
+  ]
+
+  ifelse distributed [
+    ifelse number-responses < count drivers [
     let msg get-message
     if msg = "no_message" [stop]
     set number-responses number-responses + 1
@@ -581,6 +613,32 @@ to wait-for-messages-passenger
     set response-received true
     set num-tries num-tries + 1
   ]
+  ][
+    ifelse number-responses < 1 [
+      let msg get-message
+      if msg = "no_message" [stop]
+      set number-responses number-responses + 1
+      (ifelse get-performative msg = "propose" [
+        if driver-car = nobody [
+          let driver-number get-content msg
+          ifelse share-ride? [
+            set color orange
+          ][
+            set color pink
+          ]
+          set driver-car turtle (read-from-string driver-number)
+          set wait-tries 0
+          set response-received true
+        ]
+      ] get-performative msg = "reject" [
+        set response-received true
+        set num-tries num-tries + 1
+      ])
+    ][
+      set response-received true
+      set num-tries num-tries + 1
+    ]
+  ]
 end
 
 ;; Driver waits for messages and responds passengers
@@ -589,14 +647,31 @@ to wait-for-messages-driver
   if msg = "no_message" [stop]
   ;;show msg
   let sender get-sender msg
-  (ifelse get-performative msg = "callforproposal" and get-content msg = "share" and temp-passenger = -1 [
-    ifelse (passengers-number + 1 < capacity) [
-      ifelse has-alone-passenger [
-        set temp-proposal get-driver-proposal-alone sender
+
+  ifelse distributed [
+    (ifelse get-performative msg = "callforproposal" and get-content msg = "share" and temp-passenger = -1 [
+      ifelse (passengers-number + 1 < capacity) [
+        ifelse has-alone-passenger [
+          set temp-proposal get-driver-proposal-alone sender
+        ][
+          set temp-proposal get-best-driver-proposal sender
+        ]
+        ifelse not (temp-proposal = []) [
+          let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal) (read-from-string sender)
+          send add-content passenger-travel-distance create-reply "propose" msg
+          set passengers-number passengers-number + 1
+          set temp-passenger read-from-string sender
+        ][
+          send create-reply "reject" msg
+        ]
+
       ][
-        set temp-proposal get-best-driver-proposal sender
+        send create-reply "reject" msg
       ]
-      ifelse not (temp-proposal = []) [
+      remove-msg
+    ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
+      ifelse (passengers-number + 1 < capacity) [
+        set temp-proposal get-driver-proposal-alone sender
         let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal) (read-from-string sender)
         send add-content passenger-travel-distance create-reply "propose" msg
         set passengers-number passengers-number + 1
@@ -604,36 +679,30 @@ to wait-for-messages-driver
       ][
         send create-reply "reject" msg
       ]
+      remove-msg
+    ] get-performative msg = "accept" and temp-passenger = read-from-string sender [
+      let number (read-from-string sender)
+      set stops temp-proposal
+      set distances get-stops-distances stops
+      set passenger-list fput read-from-string sender passenger-list
+      ;;show stops
+      set temp-passenger -1
+      set-path
+      remove-msg
+    ] get-performative msg = "reject" and temp-passenger = read-from-string sender [
+      set passengers-number passengers-number - 1
+      set temp-passenger -1
+      remove-msg
+    ])
+  ][
+    if get-performative msg = "propose" [
+      let number read-from-string get-content msg
+      ;; set stops
+      remove-msg
+    ]
+  ]
 
-    ][
-      send create-reply "reject" msg
-    ]
-    remove-msg
-  ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
-    ifelse (passengers-number + 1 < capacity) [
-      set temp-proposal get-driver-proposal-alone sender
-      let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal) (read-from-string sender)
-      send add-content passenger-travel-distance create-reply "propose" msg
-      set passengers-number passengers-number + 1
-      set temp-passenger read-from-string sender
-    ][
-      send create-reply "reject" msg
-    ]
-    remove-msg
-  ] get-performative msg = "accept" and temp-passenger = read-from-string sender [
-    let number (read-from-string sender)
-    set stops temp-proposal
-    set distances get-stops-distances stops
-    set passenger-list fput read-from-string sender passenger-list
-    ;;show stops
-    set temp-passenger -1
-    set-path
-    remove-msg
-  ] get-performative msg = "reject" and temp-passenger = read-from-string sender [
-    set passengers-number passengers-number - 1
-    set temp-passenger -1
-    remove-msg
-  ] get-performative msg = "inform" [
+  if get-performative msg = "inform" [
     if (get-content msg = "dropped-off") [
       set passenger-list remove read-from-string sender passenger-list
       set passengers-number passengers-number - 1
@@ -643,7 +712,7 @@ to wait-for-messages-driver
       set num-in-car num-in-car + 1
     ]
     remove-msg
-  ])
+  ]
 end
 
 ;; Add find a ride intention to passenger
@@ -694,13 +763,45 @@ to find-a-ride
     ][
       set msg add-content "alone" msg
     ]
-    broadcast-to drivers msg
+    ifelse distributed [
+      broadcast-to drivers msg
+    ][
+      broadcast-to dispatchers msg
+    ]
   ]
 end
 
 ;; Add intention to drivers to move to next patch in path to current goal
 to go-to-goal
   add-intention "next-patch-to-goal" "at-goal"
+end
+
+;; IDK
+to collect-msgs
+  (ifelse not is-processing? and ticks > collection-start-tick + 150 [
+    start-processing
+  ] is-processing? [
+    process-messages
+  ])
+end
+
+to start-processing
+  set collection-start-tick ticks
+  set is-processing? true
+  set processing-queue incoming-queue
+  set incoming-queue []
+end
+
+to process-messages
+  foreach processing-queue process-message
+  set processing-queue []
+  set is-processing? false
+end
+
+to process-message [msg]
+  let driver-string ([who] of one-of drivers)
+  send add-receiver driver-string add-content get-sender msg create-message "propose"
+  send add-receiver get-sender msg add-content driver-string create-message "propose"
 end
 
 ;; Sets driver's current path
@@ -1312,7 +1413,7 @@ SWITCH
 416
 distributed
 distributed
-0
+1
 1
 -1000
 
