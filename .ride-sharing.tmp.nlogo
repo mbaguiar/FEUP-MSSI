@@ -51,13 +51,16 @@ drivers-own
   intentions
   beliefs
   incoming-queue
+  num-patches
 ]
 
 passengers-own
 [
   wait-time
   travel-time
-  limit-wait-time
+  travel-distance
+  limit-travel-distance
+  optimal-travel-distance
   share-ride?
 
   pick-up
@@ -75,6 +78,7 @@ passengers-own
 
   temp-wait-time
   temp-travel-time
+  temp-travel-distance
 
   wait-before-die
 ]
@@ -144,7 +148,7 @@ to setup
     record-data
     setup-driver-goal
 
-    set current-path get-path
+    set current-path get-path patch-here goal
     go-to-goal
   ]
 
@@ -169,7 +173,9 @@ end
 ;; Setup max time passengers is willing to wait for trip
 ;; Placeholder - to be replated by limit drop off time based on optimal time and threshold
 to set-limit-wait-time
-  set limit-wait-time 1000
+  let path get-path patch-here goal
+  set optimal-travel-distance length path
+  set limit-travel-distance (length path) + ((length path) * (limit-time-threshold-percentage / 100))
 end
 
 ;; Set randomnly pickup patch of passenger
@@ -344,8 +350,8 @@ to go
   if (ticks mod passenger-spawn-rate) = 0 and (count passengers) < num-max-passengers [
     create-passengers 1
     [
-      set-limit-wait-time
       setup-goal
+      set-limit-wait-time
       set color black
       setup-ride-choice
 
@@ -633,7 +639,7 @@ to set-path
   ][
     set goal (item 0 goals)
   ]
-  set current-path get-path
+  set current-path get-path patch-here goal
   go-to-goal
 end
 
@@ -648,19 +654,20 @@ end
 ;; Return driver's path next patch
 to-report next-patch
   let choice item 0 current-path
+
   report choice
 end
 
 ;; Compute path between driver current position and current goal
-to-report get-path
+to-report get-path [start finish]
   let path []
-  set path lput patch-here path
-  while [last path != goal] [
+  set path lput start path
+  while [last path != finish] [
     let current-patch last path
     let patch-to-analyze current-patch
     let index 1
     while [not member? patch-to-analyze semaphores] [
-      if (member? patch-to-analyze [ neighbors4 ] of goal) [
+      if (member? patch-to-analyze [ neighbors4 ] of finish) [
         set path lput patch-to-analyze path
         report path
       ]
@@ -674,14 +681,13 @@ to-report get-path
         [ ([patch-at (index * -1) 0] of current-patch) ]
       ]
       set index index + 1
-
       set path lput patch-to-analyze path
     ]
 
     let intersection (patch-set [patch-at -1 2] of patch-to-analyze [patch-at 1 1] of patch-to-analyze [patch-at -2 0] of patch-to-analyze [patch-at 0 -1] of patch-to-analyze) with [member? self intersections]
     let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
     let current-choices possible-goals with [ not member? self path or member? self intersection-patches ]
-    let semaphore-goal min-one-of current-choices [ distance [ goal ] of myself ]
+    let semaphore-goal min-one-of current-choices [ distance finish]
 
     set path get-path-at-intersection path patch-to-analyze semaphore-goal
   ]
@@ -700,6 +706,7 @@ to-report at-goal
       report true
     ]
     set current-path but-first current-path
+    set num-patches num-patches + 1
     go-to-goal
     report true
   ]
@@ -724,6 +731,7 @@ to-report picked-up
   if (hidden?) [
     set wait-time (ticks - temp-wait-time)
     set temp-travel-time ticks
+    set temp-travel-distance [num-patches] of driver-car
     add-intention "leave-me-there" "dropped-off"
     send add-receiver ([who] of driver-car) add-content "picked-up" create-message "inform"
     report true
@@ -737,6 +745,8 @@ to-report dropped-off
   if (hidden? = false) [
     set travel-time (ticks - temp-travel-time)
     show travel-time
+    set travel-distance [num-patches] of driver-car - temp-travel-distance
+    show travel-distance
     send add-receiver ([who] of driver-car) add-content "dropped-off" create-message "inform"
     set color blue
     set driver-car nobody
@@ -923,7 +933,7 @@ num-drivers
 num-drivers
 1
 100
-2.0
+1.0
 1
 1
 NIL
@@ -1031,7 +1041,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-38.0
+1.0
 1
 1
 NIL
@@ -1068,7 +1078,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-51.0
+48.0
 1
 1
 NIL
@@ -1083,7 +1093,7 @@ limit-time-threshold-percentage
 limit-time-threshold-percentage
 0
 100
-50.0
+100.0
 1
 1
 NIL
@@ -1145,7 +1155,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot 0"
+"default" 1.0 0 -16777216 true "" "plot mean [(travel-distance + 1) / (optimal-travel-distance + 1)] of passengers"
 
 SLIDER
 12
@@ -1156,11 +1166,29 @@ passenger-spawn-rate
 passenger-spawn-rate
 30
 3000
-60.0
+30.0
 30
 1
 NIL
 HORIZONTAL
+
+PLOT
+1248
+443
+1563
+609
+Average Ride Distance
+Time
+Average Travel Distance
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot mean [travel-distance] of passengers"
 
 @#$#@#$#@
 ## WHAT IS IT?
