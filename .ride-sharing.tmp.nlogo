@@ -43,7 +43,9 @@ drivers-own
   capacity
   current-path
   goal
-  goals
+  stops
+  times
+  passenger-list
 
   passengers-number
   num-in-car
@@ -52,6 +54,8 @@ drivers-own
   beliefs
   incoming-queue
   num-patches
+
+  temp-passenger
 ]
 
 passengers-own
@@ -299,7 +303,10 @@ to setup-drivers
   set num-in-car 0
   set intentions []
   set incoming-queue []
-  set goals []
+  set stops []
+  set times []
+  set temp-passenger -1
+  set passenger-list []
   put-on-empty-road
   ifelse intersection?
   [
@@ -548,27 +555,29 @@ to wait-for-messages-driver
   let msg get-message
   if msg = "no_message" [stop]
   let sender get-sender msg
-  if get-performative msg = "request-ride" and get-content msg = "share" [
+  if get-performative msg = "request-ride" and get-content msg = "share" and temp-passenger = -1 [
     ifelse (passengers-number + 1 < capacity) [
       send add-content "yes" create-reply "inform" msg
       set passengers-number passengers-number + 1
+      set temp-passenger read-from-string sender
     ][
       send add-content "no" create-reply "inform" msg
     ]
   ]
-  if get-performative msg = "request-ride" and get-content msg = "alone" [
+  if get-performative msg = "request-ride" and get-content msg = "alone" and temp-passenger = -1 [
     ifelse (passengers-number = 0) [
       send add-content "yes" create-reply "inform" msg
       set passengers-number passengers-number + 1
+      set temp-passenger read-from-string sender
     ][
       send add-content "no" create-reply "inform" msg
     ]
   ]
   if get-performative msg = "request-ride" and get-content msg = "yes" [
     let number (read-from-string sender)
-    set goals fput ([pick-up] of turtle number) goals
-    set goals lput ([goal] of turtle number) goals
-    show goals
+    set stops fput (list ([pick-up] of turtle number) number "pickup") stops
+    set stops lput (list ([goal] of turtle number) number "dropoff") stops
+    show stops
     set-path
   ]
   if get-performative msg = "request-ride" and get-content msg = "no" [
@@ -634,10 +643,10 @@ end
 
 ;; Sets driver's current path
 to set-path
-  ifelse (empty? goals) [
+  ifelse (empty? stops) [
     set goal one-of goal-candidates
   ][
-    set goal (item 0 goals)
+    set goal (item 0 (item 0 stops))
   ]
   set current-path get-path patch-here goal
   go-to-goal
@@ -699,8 +708,8 @@ end
 to-report at-goal
   if patch-here = (item 0 current-path) [
     if member? patch-here [neighbors4] of goal [
-      if (not empty? goals) [
-        set goals remove-item 0 goals
+      if (not empty? stops) [
+        set stops remove-item 0 stops
       ]
       set-path
       report true
@@ -1041,7 +1050,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-1.0
+5.0
 1
 1
 NIL
@@ -1078,7 +1087,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-48.0
+100.0
 1
 1
 NIL
