@@ -188,6 +188,7 @@ to setup
   ask drivers [ set-car-speed ]
 
   reset-ticks
+  reset-timer
 end
 
 ;; Setup if passenger wants to share ride or not
@@ -403,8 +404,7 @@ to go
   ask turtles [ set label who ]
 
   ;; Create the passengers turtles
-  if (ticks mod passenger-spawn-rate) = 0 and (count passengers) < num-max-passengers [
-    set total-number-passengers total-number-passengers + 1
+  if (ticks mod ceiling (1 / passenger-spawn-rate)) = 0 and (count passengers) < num-max-passengers [
     create-passengers 1
     [
       setup-goal
@@ -1413,7 +1413,7 @@ SWITCH
 416
 distributed
 distributed
-1
+0
 1
 -1000
 
@@ -1471,10 +1471,10 @@ SLIDER
 373
 passenger-spawn-rate
 passenger-spawn-rate
-10
-3000
-10.0
-10
+0.001
+1
+0.03
+0.001
 1
 NIL
 HORIZONTAL

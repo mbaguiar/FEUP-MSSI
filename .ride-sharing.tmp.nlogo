@@ -188,6 +188,7 @@ to setup
   ask drivers [ set-car-speed ]
 
   reset-ticks
+  reset-timer
 end
 
 ;; Setup if passenger wants to share ride or not
@@ -403,8 +404,7 @@ to go
   ask turtles [ set label who ]
 
   ;; Create the passengers turtles
-  if (ticks mod passenger-spawn-rate) = 0 and (count passengers) < num-max-passengers [
-    set total-number-passengers total-number-passengers + 1
+  if (ticks mod ceiling (1 / passenger-spawn-rate)) = 0 and (count passengers) < num-max-passengers [
     create-passengers 1
     [
       setup-goal
@@ -646,8 +646,9 @@ to wait-for-messages-driver
   let msg get-message-no-remove
   if msg = "no_message" [stop]
   ;;show msg
+  let sender get-sender msg
+
   ifelse distributed [
-    let sender get-sender msg
     (ifelse get-performative msg = "callforproposal" and get-content msg = "share" and temp-passenger = -1 [
       ifelse (passengers-number + 1 < capacity) [
         ifelse has-alone-passenger [
@@ -696,7 +697,7 @@ to wait-for-messages-driver
   ][
     if get-performative msg = "propose" [
       let number read-from-string get-content msg
-
+      ;; set stops
       remove-msg
     ]
   ]
@@ -1412,7 +1413,7 @@ SWITCH
 416
 distributed
 distributed
-1
+0
 1
 -1000
 
@@ -1470,10 +1471,10 @@ SLIDER
 373
 passenger-spawn-rate
 passenger-spawn-rate
-10
-3000
-10.0
-10
+0.001
+0.1
+0.03
+0.001
 1
 NIL
 HORIZONTAL
