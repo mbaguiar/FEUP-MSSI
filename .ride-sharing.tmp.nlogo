@@ -177,9 +177,10 @@ end
 ;; Setup max time passengers is willing to wait for trip
 ;; Placeholder - to be replated by limit drop off time based on optimal time and threshold
 to set-limit-wait-time
-  let path get-path patch-here goal
+  let path get-path one-of ([neighbors4] of patch-here) with [member? self roads] goal
   set optimal-travel-distance length path
   set limit-travel-distance (length path) + ((length path) * (limit-time-threshold-percentage / 100))
+  show "travel distance" show limit-travel-distance
 end
 
 ;; Set randomnly pickup patch of passenger
@@ -520,25 +521,28 @@ to wait-for-messages-passenger
   let msg get-message
   if msg = "no_message" [stop]
   let sender get-sender msg
-    if get-performative msg = "inform" [
-      if (get-content msg = "yes") [
-        ifelse driver-car = nobody [
+  if get-performative msg = "inform" [
+    if ((item 0 (get-content msg)) = "yes") [
+      ifelse driver-car = nobody [
+        show "proposed-time" show (item 1 (get-content msg))
+        if ((item 1 (get-content msg)) <= limit-travel-distance) [
           set color orange
           set driver-car turtle (read-from-string sender)
           ;;set response-received true
           send add-content "yes" create-reply "request-ride" msg
 
           set number-responses number-responses + 1
-        ][
-          send add-content "no" create-reply "request-ride" msg
-          set number-responses number-responses + 1
         ]
-      ]
-      if (get-content msg = "no") [
+      ][
+        send add-content "no" create-reply "request-ride" msg
         set number-responses number-responses + 1
-
       ]
     ]
+    if (get-content msg = "no") [
+      set number-responses number-responses + 1
+
+    ]
+  ]
   if number-responses >= (count drivers) [
     set response-received true
     ifelse driver-car = nobody [
@@ -557,7 +561,8 @@ to wait-for-messages-driver
   let sender get-sender msg
   if get-performative msg = "request-ride" and get-content msg = "share" and temp-passenger = -1 [
     ifelse (passengers-number + 1 < capacity) [
-      send add-content "yes" create-reply "inform" msg
+      let passenger-travel-distance get-passenger-travel-distance sender
+      send add-content (list "yes" passenger-travel-distance) create-reply "inform" msg
       set passengers-number passengers-number + 1
       set temp-passenger read-from-string sender
     ][
@@ -566,22 +571,26 @@ to wait-for-messages-driver
   ]
   if get-performative msg = "request-ride" and get-content msg = "alone" and temp-passenger = -1 [
     ifelse (passengers-number = 0) [
-      send add-content "yes" create-reply "inform" msg
+      let passenger-travel-distance get-passenger-travel-distance sender
+      send add-content (list "yes" passenger-travel-distance) create-reply "inform" msg
       set passengers-number passengers-number + 1
       set temp-passenger read-from-string sender
     ][
       send add-content "no" create-reply "inform" msg
     ]
   ]
-  if get-performative msg = "request-ride" and get-content msg = "yes" [
+  if get-performative msg = "request-ride" and get-content msg = "yes" and temp-passenger = read-from-string sender[
     let number (read-from-string sender)
     set stops fput (list ([pick-up] of turtle number) number "pickup") stops
     set stops lput (list ([goal] of turtle number) number "dropoff") stops
+    set times set-stops-times stops
     show stops
+    set temp-passenger -1
     set-path
   ]
-  if get-performative msg = "request-ride" and get-content msg = "no" [
+  if get-performative msg = "request-ride" and get-content msg = "no" and temp-passenger = read-from-string sender[
     set passengers-number passengers-number - 1
+    set temp-passenger -1
   ]
   if get-performative msg = "inform" [
     if (get-content msg = "dropped-off") [
@@ -710,6 +719,7 @@ to-report at-goal
     if member? patch-here [neighbors4] of goal [
       if (not empty? stops) [
         set stops remove-item 0 stops
+        set times remove-item 0 times
       ]
       set-path
       report true
@@ -753,9 +763,9 @@ end
 to-report dropped-off
   if (hidden? = false) [
     set travel-time (ticks - temp-travel-time)
-    show travel-time
+    ;;show travel-time
     set travel-distance [num-patches] of driver-car - temp-travel-distance
-    show travel-distance
+    ;;show travel-distance
     send add-receiver ([who] of driver-car) add-content "dropped-off" create-message "inform"
     set color blue
     set driver-car nobody
@@ -825,6 +835,60 @@ to-report get-number-drivers-max
   ]
   report num
 end
+
+;; Sets drivers' times between stops list
+to-report set-stops-times [list-stops]
+  let list-times []
+  let temp-list []
+  set temp-list get-path patch-here (item 0 (item 0 list-stops))
+  set list-times lput length temp-list list-times
+  let index 0
+  repeat ((length list-stops) - 1) [
+    let temp-start one-of ([neighbors4] of (item 0 (item index list-stops))) with [member? self roads]
+    set temp-list get-path temp-start (item 0 (item (index + 1) list-stops))
+    set list-times lput length temp-list list-times
+    set index index + 1
+  ]
+  ;;show list-times
+  report list-times
+end
+
+to-report get-passenger-travel-distance [sender]
+  let driver-stops stops
+  let number (read-from-string sender)
+  set driver-stops fput (list ([pick-up] of turtle number) number "pickup") driver-stops
+  set driver-stops lput (list ([goal] of turtle number) number "dropoff") driver-stops
+  let stop-times set-stops-times driver-stops
+  report get-travel-distance driver-stops stop-times number
+end
+
+to-report get-travel-distance [driver-stops stop-times sender]
+  let index-pickup 0
+  let index-dropoff 0
+  let index 0
+  let total-time 0
+show "stop-times" show stop-times
+  repeat length driver-stops [
+    if (item 1 (item index driver-stops)) = sender and (item 2 (item index driver-stops)) = "pickup" [
+      set index-pickup index
+    ]
+    if (item 1 (item index driver-stops)) = sender and (item 2 (item index driver-stops)) = "dropoff" [
+      set index-dropoff index
+    ]
+    set index index + 1
+  ]
+  show index-pickup
+  show index-dropoff
+  set index index-pickup
+  repeat index-dropoff - index-pickup [
+    set total-time total-time + (item index stop-times)
+    set index index + 1
+  ]
+  report total-time
+end
+
+
+
 
 ; Copyright 2003 Uri Wilensky.
 ; See Info tab for full copyright and license.
@@ -942,7 +1006,7 @@ num-drivers
 num-drivers
 1
 100
-1.0
+65.0
 1
 1
 NIL
@@ -1050,7 +1114,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-5.0
+46.0
 1
 1
 NIL
@@ -1087,7 +1151,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-100.0
+49.0
 1
 1
 NIL
@@ -1173,10 +1237,10 @@ SLIDER
 373
 passenger-spawn-rate
 passenger-spawn-rate
-30
+10
 3000
-30.0
-30
+10.0
+10
 1
 NIL
 HORIZONTAL
