@@ -181,8 +181,8 @@ to set-limit-wait-time
   let path get-path one-of ([neighbors4] of patch-here) with [member? self roads] goal
   set optimal-travel-distance length path
   set limit-travel-distance (length path) + ((length path) * (limit-time-threshold-percentage / 100))
-  show "limit-travel-distance"
-  show limit-travel-distance
+  ;;show "limit-travel-distance"
+  ;;show limit-travel-distance
 end
 
 ;; Set randomnly pickup patch of passenger
@@ -526,7 +526,7 @@ to wait-for-messages-passenger
   if get-performative msg = "inform" [
     if ((item 0 (get-content msg)) = "yes") [
       ifelse driver-car = nobody [
-        show "proposed-time" show (item 1 (get-content msg))
+        ;;show "proposed-time" show (item 1 (get-content msg))
         if ((item 1 (get-content msg)) <= limit-travel-distance) [
           set color orange
           set driver-car turtle (read-from-string sender)
@@ -587,7 +587,7 @@ to wait-for-messages-driver
     let number (read-from-string sender)
     set stops temp-proposal
     set times get-stops-times stops
-    show stops
+    ;show stops
     set temp-passenger -1
     set-path
   ]
@@ -918,8 +918,8 @@ to-report get-best-driver-proposal [sender]
     ]
     set index-1 index-1 + 1
   ]
-  show "best-proposal"
-  show best-proposal
+  ;;show "best-proposal"
+  ;;show best-proposal
   report best-proposal
 end
 
@@ -1014,7 +1014,7 @@ grid-size-y
 grid-size-y
 1
 9
-4.0
+6.0
 1
 1
 NIL
@@ -1029,7 +1029,7 @@ grid-size-x
 grid-size-x
 1
 9
-4.0
+6.0
 1
 1
 NIL
@@ -1055,7 +1055,7 @@ num-drivers
 num-drivers
 1
 100
-2.0
+31.0
 1
 1
 NIL
@@ -1163,7 +1163,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-16.0
+58.0
 1
 1
 NIL
