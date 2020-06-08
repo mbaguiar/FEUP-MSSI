@@ -355,6 +355,7 @@ end
 
 ;; Run the simulation
 to go
+  ask turtles [ set label who ]
 
   ;; Create the passengers turtles
   if (ticks mod passenger-spawn-rate) = 0 and (count passengers) < num-max-passengers [
@@ -520,48 +521,44 @@ end
 
 ;; Passenger waits for messages and responds to drivers
 to wait-for-messages-passenger
-  let msg get-message
-  if msg = "no_message" [stop]
-  let sender get-sender msg
-  if get-performative msg = "inform" [
-    if ((item 0 (get-content msg)) = "yes") [
-      ifelse driver-car = nobody [
-        ;;show "proposed-time" show (item 1 (get-content msg))
-        if ((item 1 (get-content msg)) <= limit-travel-distance) [
-          set color orange
-          set driver-car turtle (read-from-string sender)
-          ;;set response-received true
-          send add-content "yes" create-reply "request-ride" msg
-
-          set number-responses number-responses + 1
+  ;; show "waiting for messages"
+  ifelse number-responses < count drivers [
+    let msg get-message
+    if msg = "no_message" [stop]
+    set number-responses number-responses + 1
+    let sender get-sender msg
+    if get-performative msg = "inform" [
+      if ((item 0 (get-content msg)) = "yes") [
+        ifelse driver-car = nobody [
+          ;;show "proposed-time" show (item 1 (get-content msg))
+          ifelse ((item 1 (get-content msg)) <= limit-travel-distance) [
+            ;; show "got a valid msg"
+            set color orange
+            set driver-car turtle (read-from-string sender)
+            send add-content "yes" create-reply "request-ride" msg
+            set response-received true
+          ][
+            ;; show "got an invalid msg"
+            send add-content "no" create-reply "request-ride" msg
+          ]
+        ][
+          ;; show "got an invalid msg"
+          send add-content "no" create-reply "request-ride" msg
         ]
-      ][
-        send add-content "no" create-reply "request-ride" msg
-        set number-responses number-responses + 1
       ]
     ]
-    if (get-content msg = "no") [
-      set number-responses number-responses + 1
-
-    ]
-  ]
-  if number-responses >= (count drivers) [
+  ][
     set response-received true
-    ifelse driver-car = nobody [
-      ask-for-ride
-    ][
-      add-intention "pick-me-up" "picked-up"
-    ]
   ]
-
 end
 
 ;; Driver waits for messages and responds passengers
 to wait-for-messages-driver
-  let msg get-message
+  let msg get-message-no-remove
   if msg = "no_message" [stop]
+  ;;show msg
   let sender get-sender msg
-  if get-performative msg = "request-ride" and get-content msg = "share" and temp-passenger = -1 [
+  (ifelse get-performative msg = "request-ride" and get-content msg = "share" and temp-passenger = -1 [
     ifelse (passengers-number + 1 < capacity) [
       set temp-proposal get-best-driver-proposal sender
       let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
@@ -571,8 +568,8 @@ to wait-for-messages-driver
     ][
       send add-content "no" create-reply "inform" msg
     ]
-  ]
-  if get-performative msg = "request-ride" and get-content msg = "alone" and temp-passenger = -1 [
+    remove-msg
+  ] get-performative msg = "request-ride" and get-content msg = "alone" and temp-passenger = -1 [
     ifelse (passengers-number = 0) [
       set temp-proposal get-driver-proposal-alone sender
       let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
@@ -582,20 +579,20 @@ to wait-for-messages-driver
     ][
       send add-content "no" create-reply "inform" msg
     ]
-  ]
-  if get-performative msg = "request-ride" and get-content msg = "yes" and temp-passenger = read-from-string sender[
+    remove-msg
+  ] get-performative msg = "request-ride" and get-content msg = "yes" and temp-passenger = read-from-string sender [
     let number (read-from-string sender)
     set stops temp-proposal
     set times get-stops-times stops
     ;show stops
     set temp-passenger -1
     set-path
-  ]
-  if get-performative msg = "request-ride" and get-content msg = "no" and temp-passenger = read-from-string sender[
+    remove-msg
+  ] get-performative msg = "request-ride" and get-content msg = "no" and temp-passenger = read-from-string sender [
     set passengers-number passengers-number - 1
     set temp-passenger -1
-  ]
-  if get-performative msg = "inform" [
+    remove-msg
+  ] get-performative msg = "inform" [
     if (get-content msg = "dropped-off") [
       set passengers-number passengers-number - 1
       set num-in-car num-in-car - 1
@@ -603,7 +600,8 @@ to wait-for-messages-driver
     if (get-content msg = "picked-up") [
       set num-in-car num-in-car + 1
     ]
-  ]
+    remove-msg
+  ])
 end
 
 ;; Add find a ride intention to passenger
@@ -613,11 +611,16 @@ end
 
 ;; Check if a driver can pick (me) a passenger up
 to pick-me-up
+  ;; discard any messages
+  let msg get-message
+  if msg != "no_message" and get-performative msg = "inform" and (item 0 (get-content msg)) = "yes"[
+    send add-content "no" create-reply "request-ride" msg
+  ]
+
   let pickable-group [neighbors4] of driver-car
   if member? patch-here pickable-group [
     hide-turtle
   ]
-  set response-received true
 end
 
 ;; Check if a driver can drop (me) a passenger off
@@ -626,26 +629,30 @@ to leave-me-there
   if member? goal pickable-group [
     move-to goal
     set shape "person"
-    set color black
     show-turtle
+    set has-ride? true
   ]
 end
 
 ;; Executes when intention find a ride is added
 ;; Passenger requests trip and waits for messages from drivers
 to find-a-ride
-  set temp-wait-time ticks
-  set number-responses 0
-  set response-received false
-  add-intention "wait-for-messages-passenger" "response-was-received"
-  let msg create-message "request-ride"
-  ifelse share-ride? [
-    set msg add-content "share" msg
+  ifelse driver-car != nobody [
+    add-intention "pick-me-up" "picked-up"
   ][
-    set msg add-content "alone" msg
+    ;; show "restarting waiting for msgs"
+    set temp-wait-time ticks
+    set number-responses 0
+    set response-received false
+    add-intention "wait-for-messages-passenger" "response-was-received"
+    let msg create-message "request-ride"
+    ifelse share-ride? [
+      set msg add-content "share" msg
+    ][
+      set msg add-content "alone" msg
+    ]
+    broadcast-to drivers msg
   ]
-  broadcast-to drivers msg
-  set has-ride? true
 end
 
 ;; Add intention to drivers to move to next patch in path to current goal
@@ -738,7 +745,7 @@ end
 ;; Checks if passenger received response
 ;; If true wait-for-messages-passenger intention is completed
 to-report response-was-received
-  report response-received = true
+  report response-received
 end
 
 ;; Checks if passenger already has an assigned ride
@@ -1055,7 +1062,7 @@ num-drivers
 num-drivers
 1
 100
-31.0
+8.0
 1
 1
 NIL
@@ -1163,7 +1170,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-58.0
+15.0
 1
 1
 NIL
@@ -1200,7 +1207,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-86.0
+100.0
 1
 1
 NIL
