@@ -612,6 +612,7 @@ end
 ;; Check if a driver can pick (me) a passenger up
 to pick-me-up
   ;; discard any messages
+  if (color = blue) [stop]
   let msg get-message
   if msg != "no_message" and get-performative msg = "inform" and (item 0 (get-content msg)) = "yes"[
     send add-content "no" create-reply "request-ride" msg
@@ -778,7 +779,6 @@ to-report dropped-off
     ;;show travel-distance
     send add-receiver ([who] of driver-car) add-content "dropped-off" create-message "inform"
     set color blue
-    set driver-car nobody
     set number-completed-trips number-completed-trips + 1
     ifelse share-ride? = true
     [
@@ -1062,7 +1062,7 @@ num-drivers
 num-drivers
 1
 100
-8.0
+2.0
 1
 1
 NIL
@@ -1129,7 +1129,7 @@ speed-limit
 speed-limit
 0.1
 1
-0.2
+0.1
 0.1
 1
 NIL
@@ -1170,7 +1170,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-15.0
+1.0
 1
 1
 NIL
