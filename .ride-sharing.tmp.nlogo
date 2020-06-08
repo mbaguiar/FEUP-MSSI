@@ -86,6 +86,8 @@ passengers-own
   temp-travel-distance
 
   wait-before-die
+  num-tries
+  wait-tries
 ]
 
 patches-own
@@ -341,6 +343,8 @@ to setup-passengers
   set temp-wait-time 0
   set wait-time 0
   set wait-before-die 0
+  set num-tries 0
+  set wait-tries 0
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -522,6 +526,8 @@ end
 ;; Passenger waits for messages and responds to drivers
 to wait-for-messages-passenger
   ;; show "waiting for messages"
+  set wait-time wait-time + 1
+  show wait-time
   ifelse number-responses < count drivers [
     let msg get-message
     if msg = "no_message" [stop]
@@ -536,6 +542,7 @@ to wait-for-messages-passenger
             set color orange
             set driver-car turtle (read-from-string sender)
             send add-content "yes" create-reply "request-ride" msg
+            set wait-time 0
             set response-received true
           ][
             ;; show "got an invalid msg"
@@ -549,7 +556,15 @@ to wait-for-messages-passenger
     ]
   ][
     set response-received true
+    set num-tries num-tries + 1
   ]
+  if (wait-time >= 100) [
+    set num-tries num-tries + 1
+    set wait-time 0
+  ]
+  if (num-tries >= 3) [
+      die
+   ]
 end
 
 ;; Driver waits for messages and responds passengers
@@ -561,10 +576,15 @@ to wait-for-messages-driver
   (ifelse get-performative msg = "request-ride" and get-content msg = "share" and temp-passenger = -1 [
     ifelse (passengers-number + 1 < capacity) [
       set temp-proposal get-best-driver-proposal sender
-      let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
-      send add-content (list "yes" passenger-travel-distance) create-reply "inform" msg
-      set passengers-number passengers-number + 1
-      set temp-passenger read-from-string sender
+      ifelse not (temp-proposal = []) [
+        let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
+        send add-content (list "yes" passenger-travel-distance) create-reply "inform" msg
+        set passengers-number passengers-number + 1
+        set temp-passenger read-from-string sender
+      ][
+        send add-content "no" create-reply "inform" msg
+      ]
+
     ][
       send add-content "no" create-reply "inform" msg
     ]
@@ -584,7 +604,8 @@ to wait-for-messages-driver
     let number (read-from-string sender)
     set stops temp-proposal
     set times get-stops-times stops
-    ;show stops
+    set passenger-list fput read-from-string sender passenger-list
+    ;;show stops
     set temp-passenger -1
     set-path
     remove-msg
@@ -594,6 +615,7 @@ to wait-for-messages-driver
     remove-msg
   ] get-performative msg = "inform" [
     if (get-content msg = "dropped-off") [
+      set passenger-list remove read-from-string sender passenger-list
       set passengers-number passengers-number - 1
       set num-in-car num-in-car - 1
     ]
@@ -612,7 +634,7 @@ end
 ;; Check if a driver can pick (me) a passenger up
 to pick-me-up
   ;; discard any messages
-
+  if (color = blue) [stop]
   let msg get-message
   if msg != "no_message" and get-performative msg = "inform" and (item 0 (get-content msg)) = "yes"[
     send add-content "no" create-reply "request-ride" msg
@@ -911,14 +933,16 @@ to-report get-best-driver-proposal [sender]
       let temp-stops-proposal-2 temp-stops-proposal
       set temp-stops-proposal-2 insert-item index-2 temp-stops-proposal-2 dropoff
       let temp-times get-stops-times temp-stops-proposal-2
-      let temp-total-time get-total-time temp-times
-      ifelse best-total-time = -1 [
-        set best-proposal temp-stops-proposal-2
-        set best-total-time temp-total-time
-      ][
-        if best-total-time > temp-total-time [
+      if (is-proposal-valid temp-stops-proposal-2 temp-times) [
+        let temp-total-time get-total-time temp-times
+        ifelse best-total-time = -1 [
           set best-proposal temp-stops-proposal-2
           set best-total-time temp-total-time
+        ][
+          if best-total-time > temp-total-time [
+            set best-proposal temp-stops-proposal-2
+            set best-total-time temp-total-time
+          ]
         ]
       ]
       set index-2 index-2 + 1
@@ -938,6 +962,17 @@ to-report get-driver-proposal-alone [sender]
   report proposal
 end
 
+to-report is-proposal-valid [proposal proposal-times]
+  let index 0
+  repeat length passenger-list [
+    let passenger-distance get-passenger-travel-distance proposal proposal-times (item index passenger-list)
+    if (passenger-distance > [limit-travel-distance] of turtle (item index passenger-list)) [
+      report false
+    ]
+    set index index + 1
+  ]
+  report true
+end
 
 
 
@@ -1062,7 +1097,7 @@ num-drivers
 num-drivers
 1
 100
-2.0
+11.0
 1
 1
 NIL
@@ -1170,7 +1205,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-1.0
+31.0
 1
 1
 NIL
@@ -1207,7 +1242,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-100.0
+81.0
 1
 1
 NIL
@@ -1222,7 +1257,7 @@ limit-time-threshold-percentage
 limit-time-threshold-percentage
 0
 500
-500.0
+316.0
 1
 1
 NIL
@@ -1274,12 +1309,12 @@ PLOT
 1562
 431
 Average ratio TT/OTT
-TT/OTT
 Time
+TT/OTT
 0.0
 10.0
 0.0
-10.0
+1.0
 true
 false
 "" ""
