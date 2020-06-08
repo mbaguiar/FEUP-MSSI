@@ -32,8 +32,15 @@ globals
   semaphore-goals
 
   number-completed-trips
+  number-cancel-trips
   number-shared-trips
   number-individual-trips
+
+  total-number-passengers
+  total-wait-time
+  total-travel-time
+  total-travel-distance
+  total-ratio
 ]
 
 drivers-own
@@ -207,9 +214,16 @@ to setup-globals
   set number-completed-trips 0
   set grid-x-inc world-width / grid-size-x
   set grid-y-inc world-height / grid-size-y
+  set total-number-passengers 0
+  set total-wait-time 0
+  set total-travel-time 0
+  set total-travel-distance 0
+  set total-ratio 0
+  set number-cancel-trips 0
 
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
+
 end
 
 ;; Make the patches have appropriate colors, set up the roads and intersections agentsets,
@@ -363,6 +377,7 @@ to go
 
   ;; Create the passengers turtles
   if (ticks mod passenger-spawn-rate) = 0 and (count passengers) < num-max-passengers [
+    set total-number-passengers total-number-passengers + 1
     create-passengers 1
     [
       setup-goal
@@ -526,13 +541,14 @@ end
 ;; Passenger waits for messages and responds to drivers
 to wait-for-messages-passenger
   ;; show "waiting for messages"
-  set wait-time wait-time + 1
-  if (wait-time >= 100) [
+  set wait-tries wait-tries + 1
+  if (wait-tries >= 100) [
     set num-tries num-tries + 1
-    set wait-time 0
+    set wait-tries 0
   ]
   if (num-tries >= 3) [
-      die
+    set number-cancel-trips number-cancel-trips + 1
+    die
    ]
   ifelse number-responses < count drivers [
     let msg get-message
@@ -548,7 +564,7 @@ to wait-for-messages-passenger
             set color orange
             set driver-car turtle (read-from-string sender)
             send add-content "yes" create-reply "request-ride" msg
-            set wait-time 0
+            set wait-tries 0
             set response-received true
           ][
             ;; show "got an invalid msg"
@@ -781,6 +797,7 @@ end
 to-report picked-up
   if (hidden?) [
     set wait-time (ticks - temp-wait-time)
+    set total-wait-time total-wait-time + wait-time
     set temp-travel-time ticks
     set temp-travel-distance [num-patches] of driver-car
     add-intention "leave-me-there" "dropped-off"
@@ -795,8 +812,11 @@ end
 to-report dropped-off
   if (hidden? = false) [
     set travel-time (ticks - temp-travel-time)
+    set total-travel-time total-travel-time + travel-time
     ;;show travel-time
     set travel-distance [num-patches] of driver-car - temp-travel-distance
+    set total-travel-distance total-travel-distance + travel-distance
+    set total-ratio total-ratio + (travel-distance / optimal-travel-distance)
     ;;show travel-distance
     send add-receiver ([who] of driver-car) add-content "dropped-off" create-message "inform"
     set color blue
@@ -1026,7 +1046,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [travel-time] of passengers"
+"default" 1.0 0 -16777216 true "" "plot total-travel-time / total-number-passengers"
 
 PLOT
 922
@@ -1300,7 +1320,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of passengers"
+"default" 1.0 0 -16777216 true "" "plot total-wait-time / total-number-passengers"
 
 PLOT
 1248
@@ -1318,7 +1338,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [(travel-distance + 1) / (optimal-travel-distance + 1)] of passengers"
+"default" 1.0 0 -16777216 true "" "plot total-ratio / total-number-passengers"
 
 SLIDER
 12
@@ -1351,7 +1371,18 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [travel-distance] of passengers"
+"default" 1.0 0 -16777216 true "" "plot total-travel-distance / total-number-passengers"
+
+MONITOR
+1249
+36
+1560
+81
+Number of canceled trips
+number-cancel-trips
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
