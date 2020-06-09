@@ -801,7 +801,7 @@ end
 to process-messages
   let taken-drivers []
   let waiting-processing map [[msg] -> get-sender msg] processing-queue
-  let all-proposals reduce [[acc curr-msg] -> sentence ifelse-value is-list? acc [acc] [[]] get-proposals-for-message curr-msg] processing-queue
+  let all-proposals reduce [[acc curr-msg] -> ifelse-value empty? curr-msg [[]] [lput acc get-proposals-for-message curr-msg]] fput [] processing-queue
   show all-proposals
   let sorted-proposals sort-by sort-proposal all-proposals
   while [not empty? sorted-proposals] [
@@ -827,14 +827,13 @@ end
 to-report get-proposals-for-message [msg]
   let proposal-passenger (read-from-string get-sender msg)
   let proposals map [[proposal-driver] -> get-best-proposal-for-passenger-driver [who] of proposal-driver proposal-passenger] ([self] of drivers)
-
   report filter [x -> not (x = "")] proposals
 end
 
 to-report sort-proposal [p1 p2]
   show p1
   show p2
-  let distances1 get-stops-distances (item 0 p1) [patch-here] of (item 2 p1)
+  let distances1 get-stops-distances (item 0 p1) [patch-here] of t(item 2 p1)
   let distance1 get-passenger-travel-distance (item 0 p1) distances1 (item 1 p1)
   let distances2 get-stops-distances (item 0 p2) [patch-here] of (item 2 p2)
   let distance2 get-passenger-travel-distance (item 0 p2) distances2 (item 1 p2)
