@@ -542,7 +542,7 @@ end
 to wait-for-messages-passenger
   ;; show "waiting for messages"
   set wait-tries wait-tries + 1
-  if (wait-tries >= 100) [
+  if (wait-tries >= 300) [
     set num-tries num-tries + 1
     set wait-tries 0
   ]
@@ -560,7 +560,11 @@ to wait-for-messages-passenger
         ;;show "proposed-time" show (item 1 (get-content msg))
         ifelse (get-content msg <= limit-travel-distance) [
           ;; show "got a valid msg"
-          set color orange
+          ifelse share-ride? [
+            set color orange
+          ][
+            set color pink
+          ]
           set driver-car turtle (read-from-string sender)
           send create-reply "accept" msg
           set wait-tries 0
@@ -587,8 +591,12 @@ to wait-for-messages-driver
   ;;show msg
   let sender get-sender msg
   (ifelse get-performative msg = "callforproposal" and get-content msg = "share" and temp-passenger = -1 [
-    ifelse (passengers-number + 1 < capacity and not has-alone-passenger) [
-      set temp-proposal get-best-driver-proposal sender
+    ifelse (passengers-number + 1 < capacity) [
+      ifelse has-alone-passenger [
+        set temp-proposal get-driver-proposal-alone sender
+      ][
+        set temp-proposal get-best-driver-proposal sender
+      ]
       ifelse not (temp-proposal = []) [
         let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
         send add-content passenger-travel-distance create-reply "propose" msg
@@ -603,7 +611,7 @@ to wait-for-messages-driver
     ]
     remove-msg
   ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
-    ifelse (passengers-number = 0) [
+    ifelse (passengers-number + 1 < capacity) [
       set temp-proposal get-driver-proposal-alone sender
       let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
       send add-content passenger-travel-distance create-reply "propose" msg
@@ -1080,7 +1088,7 @@ true
 false
 "set-plot-y-range 0 5" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot (number-shared-trips + 1) / (number-individual-trips + 1)"
+"default" 1.0 0 -16777216 true "" "plot (number-shared-trips) / (number-individual-trips)"
 
 SLIDER
 108
@@ -1240,7 +1248,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-31.0
+50.0
 1
 1
 NIL
