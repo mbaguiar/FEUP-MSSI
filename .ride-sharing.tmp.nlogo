@@ -650,7 +650,7 @@ to pick-me-up
   if (color = blue) [stop]
   let msg get-message
   if msg != "no_message" and get-performative msg = "propose" [
-    sendcreate-reply "request-ride" msg
+    send create-reply "reject" msg
   ]
 
   let pickable-group [neighbors4] of driver-car
@@ -903,7 +903,7 @@ to-report get-stops-times [list-stops]
 end
 
 to-report get-passenger-travel-distance [driver-stops stop-times sender]
-  let index-pickup 0
+  let index-pickup -1
   let index-dropoff 0
   let index 0
   let total-time 0
@@ -916,10 +916,19 @@ to-report get-passenger-travel-distance [driver-stops stop-times sender]
     ]
     set index index + 1
   ]
-  set index index-pickup
-  repeat index-dropoff - index-pickup [
-    set total-time total-time + (item index stop-times)
-    set index index + 1
+  ifelse not (index-pickup = -1)][
+    set index index-pickup
+    repeat index-dropoff - index-pickup [
+      set total-time total-time + (item index stop-times)
+      set index index + 1
+    ]
+  ][
+    set index 0
+    set total-time (num-patches - [temp-travel-distance] of turtle sender)
+    repeat index-dropoff [
+      set total-time total-time + (item index stop-times)
+      set index index + 1
+    ]
   ]
   report total-time
 end
