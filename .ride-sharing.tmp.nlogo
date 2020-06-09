@@ -547,7 +547,7 @@ to wait-for-messages-passenger
     set wait-tries 0
   ]
   if (num-tries >= 3) [
-    set total-cancel-trips
+    set number-cancel-trips number-cancel-trips + 1
     die
    ]
   ifelse number-responses < count drivers [
@@ -555,25 +555,23 @@ to wait-for-messages-passenger
     if msg = "no_message" [stop]
     set number-responses number-responses + 1
     let sender get-sender msg
-    if get-performative msg = "inform" [
-      if ((item 0 (get-content msg)) = "yes") [
-        ifelse driver-car = nobody [
-          ;;show "proposed-time" show (item 1 (get-content msg))
-          ifelse ((item 1 (get-content msg)) <= limit-travel-distance) [
-            ;; show "got a valid msg"
-            set color orange
-            set driver-car turtle (read-from-string sender)
-            send add-content "yes" create-reply "request-ride" msg
-            set wait-tries 0
-            set response-received true
-          ][
-            ;; show "got an invalid msg"
-            send add-content "no" create-reply "request-ride" msg
-          ]
+    if get-performative msg = "propose" [
+      ifelse driver-car = nobody [
+        ;;show "proposed-time" show (item 1 (get-content msg))
+        ifelse (get-content msg <= limit-travel-distance) [
+          ;; show "got a valid msg"
+          set color orange
+          set driver-car turtle (read-from-string sender)
+          send create-reply "accept" msg
+          set wait-tries 0
+          set response-received true
         ][
           ;; show "got an invalid msg"
-          send add-content "no" create-reply "request-ride" msg
+          send create-reply "reject" msg
         ]
+      ][
+        ;; show "got an invalid msg"
+        send create-reply "reject" msg
       ]
     ]
   ][
@@ -588,34 +586,34 @@ to wait-for-messages-driver
   if msg = "no_message" [stop]
   ;;show msg
   let sender get-sender msg
-  (ifelse get-performative msg = "request-ride" and get-content msg = "share" and temp-passenger = -1 [
+  (ifelse get-performative msg = "callforproposal" and get-content msg = "share" and temp-passenger = -1 [
     ifelse (passengers-number + 1 < capacity) [
       set temp-proposal get-best-driver-proposal sender
       ifelse not (temp-proposal = []) [
         let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
-        send add-content (list "yes" passenger-travel-distance) create-reply "inform" msg
+        send add-content passenger-travel-distance create-reply "propose" msg
         set passengers-number passengers-number + 1
         set temp-passenger read-from-string sender
       ][
-        send add-content "no" create-reply "inform" msg
+        send create-reply "reject" msg
       ]
 
     ][
-      send add-content "no" create-reply "inform" msg
+      send create-reply "reject" msg
     ]
     remove-msg
-  ] get-performative msg = "request-ride" and get-content msg = "alone" and temp-passenger = -1 [
+  ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
     ifelse (passengers-number = 0) [
       set temp-proposal get-driver-proposal-alone sender
       let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
-      send add-content (list "yes" passenger-travel-distance) create-reply "inform" msg
+      send add-content passenger-travel-distance create-reply "propose" msg
       set passengers-number passengers-number + 1
       set temp-passenger read-from-string sender
     ][
-      send add-content "no" create-reply "inform" msg
+      send create-reply "reject" msg
     ]
     remove-msg
-  ] get-performative msg = "request-ride" and get-content msg = "yes" and temp-passenger = read-from-string sender [
+  ] get-performative msg = "accept" and temp-passenger = read-from-string sender [
     let number (read-from-string sender)
     set stops temp-proposal
     set times get-stops-times stops
@@ -624,7 +622,7 @@ to wait-for-messages-driver
     set temp-passenger -1
     set-path
     remove-msg
-  ] get-performative msg = "request-ride" and get-content msg = "no" and temp-passenger = read-from-string sender [
+  ] get-performative msg = "reject" and temp-passenger = read-from-string sender [
     set passengers-number passengers-number - 1
     set temp-passenger -1
     remove-msg
@@ -651,8 +649,8 @@ to pick-me-up
   ;; discard any messages
   if (color = blue) [stop]
   let msg get-message
-  if msg != "no_message" and get-performative msg = "inform" and (item 0 (get-content msg)) = "yes"[
-    send add-content "no" create-reply "request-ride" msg
+  if msg != "no_message" and get-performative msg = "propose" [
+    sendcreate-reply "request-ride" msg
   ]
 
   let pickable-group [neighbors4] of driver-car
@@ -683,7 +681,7 @@ to find-a-ride
     set number-responses 0
     set response-received false
     add-intention "wait-for-messages-passenger" "response-was-received"
-    let msg create-message "request-ride"
+    let msg create-message "callforproposal"
     ifelse share-ride? [
       set msg add-content "share" msg
     ][
