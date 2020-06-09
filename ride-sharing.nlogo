@@ -587,7 +587,7 @@ to wait-for-messages-driver
   ;;show msg
   let sender get-sender msg
   (ifelse get-performative msg = "callforproposal" and get-content msg = "share" and temp-passenger = -1 [
-    ifelse (passengers-number + 1 < capacity) [
+    ifelse (passengers-number + 1 < capacity and not has-alone-passenger) [
       set temp-proposal get-best-driver-proposal sender
       ifelse not (temp-proposal = []) [
         let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
@@ -981,9 +981,9 @@ to-report get-best-driver-proposal [sender]
 end
 
 to-report get-driver-proposal-alone [sender]
-  let proposal []
+  let proposal stops
   let sender-number (read-from-string sender)
-  set proposal fput (list [pick-up] of turtle sender-number sender-number "pickup") proposal
+  set proposal lput (list [pick-up] of turtle sender-number sender-number "pickup") proposal
   set proposal lput (list [goal] of turtle sender-number sender-number "dropoff") proposal
   report proposal
 end
@@ -1000,7 +1000,16 @@ to-report is-proposal-valid [proposal proposal-times]
   report true
 end
 
-
+to-report has-alone-passenger
+  let has-alone false
+  foreach passenger-list [
+    [number] ->
+    if [share-ride?] of turtle number = false [
+      set has-alone true
+    ]
+  ]
+  report has-alone
+end
 
 
 
