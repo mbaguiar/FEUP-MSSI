@@ -51,7 +51,7 @@ drivers-own
   current-path
   goal
   stops
-  times
+  distances
   passenger-list
 
   passengers-number
@@ -184,9 +184,8 @@ to setup-ride-choice
   ]
 end
 
-;; Setup max time passengers is willing to wait for trip
-;; Placeholder - to be replated by limit drop off time based on optimal time and threshold
-to set-limit-wait-time
+;; Setup max distance passengers is willing to accept for a trip
+to set-limit-travel-distance
   let path get-path one-of ([neighbors4] of patch-here) with [member? self roads] goal
   set optimal-travel-distance length path
   set limit-travel-distance (length path) + ((length path) * (limit-time-threshold-percentage / 100))
@@ -323,7 +322,7 @@ to setup-drivers
   set intentions []
   set incoming-queue []
   set stops []
-  set times []
+  set distances []
   set temp-passenger -1
   set passenger-list []
   put-on-empty-road
@@ -381,7 +380,7 @@ to go
     create-passengers 1
     [
       setup-goal
-      set-limit-wait-time
+      set-limit-travel-distance
       set color black
       setup-ride-choice
 
@@ -598,7 +597,7 @@ to wait-for-messages-driver
         set temp-proposal get-best-driver-proposal sender
       ]
       ifelse not (temp-proposal = []) [
-        let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
+        let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal) (read-from-string sender)
         send add-content passenger-travel-distance create-reply "propose" msg
         set passengers-number passengers-number + 1
         set temp-passenger read-from-string sender
@@ -613,7 +612,7 @@ to wait-for-messages-driver
   ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
     ifelse (passengers-number + 1 < capacity) [
       set temp-proposal get-driver-proposal-alone sender
-      let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-times temp-proposal) (read-from-string sender)
+      let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal) (read-from-string sender)
       send add-content passenger-travel-distance create-reply "propose" msg
       set passengers-number passengers-number + 1
       set temp-passenger read-from-string sender
@@ -624,7 +623,7 @@ to wait-for-messages-driver
   ] get-performative msg = "accept" and temp-passenger = read-from-string sender [
     let number (read-from-string sender)
     set stops temp-proposal
-    set times get-stops-times stops
+    set distances get-stops-distances stops
     set passenger-list fput read-from-string sender passenger-list
     ;;show stops
     set temp-passenger -1
@@ -773,7 +772,7 @@ to-report at-goal
     if member? patch-here [neighbors4] of goal [
       if (not empty? stops) [
         set stops remove-item 0 stops
-        set times remove-item 0 times
+        set distances remove-item 0 distances
       ]
       set-path
       report true
@@ -893,28 +892,28 @@ to-report get-number-drivers-max
   report num
 end
 
-;; Sets drivers' times between stops list
-to-report get-stops-times [list-stops]
-  let list-times []
+;; Sets drivers' distances between stops list
+to-report get-stops-distances [list-stops]
+  let list-distances []
   let temp-list []
   set temp-list get-path patch-here (item 0 (item 0 list-stops))
-  set list-times lput length temp-list list-times
+  set list-distances lput length temp-list list-distances
   let index 0
   repeat ((length list-stops) - 1) [
     let temp-start one-of ([neighbors4] of (item 0 (item index list-stops))) with [member? self roads]
     set temp-list get-path temp-start (item 0 (item (index + 1) list-stops))
-    set list-times lput length temp-list list-times
+    set list-distances lput length temp-list list-distances
     set index index + 1
   ]
   ;;show list-times
-  report list-times
+  report list-distances
 end
 
-to-report get-passenger-travel-distance [driver-stops stop-times sender]
+to-report get-passenger-travel-distance [driver-stops stop-distances sender]
   let index-pickup -1
   let index-dropoff 0
   let index 0
-  let total-time 0
+  let total-distance 0
   repeat length driver-stops [
     if (item 1 (item index driver-stops)) = sender and (item 2 (item index driver-stops)) = "pickup" [
       set index-pickup index
@@ -927,28 +926,28 @@ to-report get-passenger-travel-distance [driver-stops stop-times sender]
   ifelse not (index-pickup = -1)[
     set index index-pickup
     repeat index-dropoff - index-pickup [
-      set total-time total-time + (item index stop-times)
+      set total-distance total-distance + (item index stop-distances)
       set index index + 1
     ]
   ][
     set index 0
-    set total-time (num-patches - [temp-travel-distance] of turtle sender)
+    set total-distance (num-patches - [temp-travel-distance] of turtle sender)
     repeat index-dropoff [
-      set total-time total-time + (item index stop-times)
+      set total-distance total-distance + (item index stop-distances)
       set index index + 1
     ]
   ]
-  report total-time
+  report total-distance
 end
 
-to-report get-total-time [stops-times]
+to-report get-total-distance [stops-distances]
   let index 0
-  let total-time 0
-  repeat length stops-times [
-    set total-time total-time + (item index stops-times)
+  let total-distance 0
+  repeat length stops-distances [
+    set total-distance total-distance + (item index stops-distances)
     set index index + 1
   ]
-  report total-time
+  report total-distance
 end
 
 to-report get-best-driver-proposal [sender]
@@ -956,7 +955,7 @@ to-report get-best-driver-proposal [sender]
   let pickup (list [pick-up] of turtle sender-number sender-number "pickup")
   let dropoff (list [goal] of turtle sender-number sender-number "dropoff")
   let best-proposal []
-  let best-total-time -1
+  let best-total-distance -1
   let index-1 0
   let index-2 0
   repeat (length stops) + 1 [
@@ -966,16 +965,16 @@ to-report get-best-driver-proposal [sender]
     repeat (length stops + 1) - index-1 [
       let temp-stops-proposal-2 temp-stops-proposal
       set temp-stops-proposal-2 insert-item index-2 temp-stops-proposal-2 dropoff
-      let temp-times get-stops-times temp-stops-proposal-2
-      if (is-proposal-valid temp-stops-proposal-2 temp-times) [
-        let temp-total-time get-total-time temp-times
-        ifelse best-total-time = -1 [
+      let temp-distances get-stops-distances temp-stops-proposal-2
+      if (is-proposal-valid temp-stops-proposal-2 temp-distances) [
+        let temp-total-distance get-total-distance temp-distances
+        ifelse best-total-distance = -1 [
           set best-proposal temp-stops-proposal-2
-          set best-total-time temp-total-time
+          set best-total-distance temp-total-distance
         ][
-          if best-total-time > temp-total-time [
+          if best-total-distance > temp-total-distance [
             set best-proposal temp-stops-proposal-2
-            set best-total-time temp-total-time
+            set best-total-distance temp-total-distance
           ]
         ]
       ]
@@ -996,10 +995,10 @@ to-report get-driver-proposal-alone [sender]
   report proposal
 end
 
-to-report is-proposal-valid [proposal proposal-times]
+to-report is-proposal-valid [proposal proposal-distances]
   let index 0
   repeat length passenger-list [
-    let passenger-distance get-passenger-travel-distance proposal proposal-times (item index passenger-list)
+    let passenger-distance get-passenger-travel-distance proposal proposal-distances (item index passenger-list)
     if (passenger-distance > [limit-travel-distance] of turtle (item index passenger-list)) [
       report false
     ]
@@ -1351,9 +1350,9 @@ PLOT
 268
 1562
 431
-Average ratio TT/OTT
+Average ratio TD/OTD
 Time
-TT/OTT
+TD/OTD
 0.0
 10.0
 0.0
