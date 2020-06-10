@@ -573,7 +573,7 @@ end
 to wait-for-messages-passenger
   ;; show "waiting for messages"
   set wait-tries wait-tries + 1
-  if (wait-tries >= 600) [
+  if (wait-tries >= 600 and distributed) [
     set num-tries num-tries + 1
     set wait-tries 0
   ]
@@ -851,6 +851,10 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
     ifelse [share-ride?] of turtle proposal-passenger and not ([has-alone-passenger] of turtle proposal-driver) [
       set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver [passenger-list] of turtle proposal-driver [num-patches] of turtle proposal-driver
       if proposal = [] [
+        report ""
+      ]
+      let passenger-travel-distance get-passenger-travel-distance proposal (get-stops-distances proposal [patch-here] of turtle proposal-driver) proposal-passenger [num-patches] of turtle proposal-driver
+      if passenger-travel-distance > ([limit-travel-distance] of turtle proposal-passenger) [
         report ""
       ]
     ][
@@ -1264,7 +1268,7 @@ grid-size-y
 grid-size-y
 1
 9
-6.0
+9.0
 1
 1
 NIL
@@ -1279,7 +1283,7 @@ grid-size-x
 grid-size-x
 1
 9
-6.0
+9.0
 1
 1
 NIL
@@ -1450,7 +1454,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-81.0
+80.0
 1
 1
 NIL
@@ -1465,7 +1469,7 @@ limit-time-threshold-percentage
 limit-time-threshold-percentage
 0
 500
-316.0
+350.0
 1
 1
 NIL
@@ -1478,7 +1482,7 @@ SWITCH
 416
 distributed
 distributed
-0
+1
 1
 -1000
 
@@ -1538,7 +1542,7 @@ passenger-spawn-rate
 passenger-spawn-rate
 0.001
 1
-0.03
+0.103
 0.001
 1
 NIL
