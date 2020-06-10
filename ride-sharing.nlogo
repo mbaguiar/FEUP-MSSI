@@ -658,10 +658,10 @@ to wait-for-messages-driver
         ifelse has-alone-passenger [
           set temp-proposal get-driver-proposal-alone sender stops
         ][
-          set temp-proposal get-best-driver-proposal sender stops passenger-list
+          set temp-proposal get-best-driver-proposal sender stops passenger-list num-patches
         ]
         ifelse not (temp-proposal = []) [
-          let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender)
+          let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
           send add-content passenger-travel-distance create-reply "propose" msg
           set passengers-number passengers-number + 1
           set temp-passenger read-from-string sender
@@ -676,7 +676,7 @@ to wait-for-messages-driver
     ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
       ifelse (passengers-number + 1 < capacity) [
         set temp-proposal get-driver-proposal-alone sender stops
-        let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender)
+        let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
         send add-content passenger-travel-distance create-reply "propose" msg
         set passengers-number passengers-number + 1
         set temp-passenger read-from-string sender
@@ -699,8 +699,9 @@ to wait-for-messages-driver
       remove-msg
     ])
   ][
-    (ifelse get-performative msg = "inform" [
+    (ifelse get-performative msg = "propose" [
       set stops (item 0 get-content msg)
+      set distances get-stops-distances stops patch-here
       set passenger-list lput (item 1 get-content msg) passenger-list
       remove-msg
     ] get-performative msg = "reject" [
@@ -801,24 +802,23 @@ end
 to process-messages
   let taken-drivers []
   let waiting-processing map [[msg] -> get-sender msg] processing-queue
-  let all-proposals reduce [[acc curr-msg] -> ifelse-value empty? curr-msg [[]] [lput acc get-proposals-for-message curr-msg]] fput [] processing-queue
-  show all-proposals
+  let all-proposals reduce [[acc curr-msg] -> ifelse-value empty? curr-msg [[]] [sentence acc get-proposals-for-message curr-msg]] fput [] processing-queue
   let sorted-proposals sort-by sort-proposal all-proposals
   while [not empty? sorted-proposals] [
     let proposal first sorted-proposals
     let proposal-passenger item 1 proposal
     let proposal-driver item 2 proposal
-    if not (member? proposal-driver taken-drivers) and (member? proposal-passenger waiting-processing) [
+    if (not (member? proposal-driver taken-drivers)) and (member? (word proposal-passenger) waiting-processing) [
       set taken-drivers lput proposal-driver taken-drivers
-      set waiting-processing remove proposal-passenger waiting-processing
-      send add-receiver proposal-driver add-content (list proposal proposal-passenger) create-message "inform"
+      set waiting-processing remove (word proposal-passenger) waiting-processing
+      send add-receiver proposal-driver add-content (list(item 0 proposal) proposal-passenger) create-message "propose"
       send add-receiver proposal-passenger add-content proposal-driver create-message "inform"
     ]
     set sorted-proposals remove-item 0 sorted-proposals
   ]
   foreach waiting-processing [
     [message] ->
-    send add-receiver (read-from-string get-sender message) create-message "reject"
+    send add-receiver (read-from-string message) create-message "reject"
   ]
   set processing-queue []
   set is-processing? false
@@ -831,12 +831,10 @@ to-report get-proposals-for-message [msg]
 end
 
 to-report sort-proposal [p1 p2]
-  show p1
-  show p2
-  let distances1 get-stops-distances (item 0 p1) [patch-here] of turtle (item 2 p1)
-  let distance1 get-passenger-travel-distance (item 0 p1) distances1 (item 1 p1)
-  let distances2 get-stops-distances (item 0 p2) [patch-here] of turtle (item 2 p2)
-  let distance2 get-passenger-travel-distance (item 0 p2) distances2 (item 1 p2)
+  let distances1 get-stops-distances (item 0 p1) ([patch-here] of turtle (item 2 p1))
+  let distance1 get-passenger-travel-distance (item 0 p1) distances1 (item 1 p1) ([num-patches] of turtle (item 2 p1))
+  let distances2 get-stops-distances (item 0 p2) ([patch-here] of turtle (item 2 p2))
+  let distance2 get-passenger-travel-distance (item 0 p2) distances2 (item 1 p2) ([num-patches] of turtle (item 2 p2))
   report distance1 < distance2
 end
 
@@ -844,7 +842,7 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
   let proposal []
   ifelse ([passengers-number] of turtle proposal-driver) + 1 < [capacity] of turtle proposal-driver [
     ifelse [share-ride?] of turtle proposal-passenger and not ([has-alone-passenger] of turtle proposal-driver) [
-      set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver [passenger-list] of turtle proposal-driver
+      set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver [passenger-list] of turtle proposal-driver [num-patches] of turtle proposal-driver
       if proposal = [] [
         report ""
       ]
@@ -854,9 +852,7 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
   ][
     report ""
   ]
-  set proposal lput proposal-passenger proposal
-  set proposal lput proposal-driver proposal
-  report proposal
+  report (list proposal proposal-passenger proposal-driver)
 end
 
 
@@ -1072,7 +1068,7 @@ to-report get-stops-distances [list-stops cur-patch]
   report list-distances
 end
 
-to-report get-passenger-travel-distance [driver-stops stop-distances sender]
+to-report get-passenger-travel-distance [driver-stops stop-distances sender driver-patches]
   let index-pickup -1
   let index-dropoff 0
   let index 0
@@ -1094,7 +1090,7 @@ to-report get-passenger-travel-distance [driver-stops stop-distances sender]
     ]
   ][
     set index 0
-    set total-distance (num-patches - [temp-travel-distance] of turtle sender)
+    set total-distance (driver-patches - [temp-travel-distance] of turtle sender)
     repeat index-dropoff [
       set total-distance total-distance + (item index stop-distances)
       set index index + 1
@@ -1113,7 +1109,7 @@ to-report get-total-distance [stops-distances]
   report total-distance
 end
 
-to-report get-best-driver-proposal [sender cur-stops passengers-list]
+to-report get-best-driver-proposal [sender cur-stops passengers-list driver-patches]
   let sender-number (read-from-string sender)
   let pickup (list [pick-up] of turtle sender-number sender-number "pickup")
   let dropoff (list [goal] of turtle sender-number sender-number "dropoff")
@@ -1128,8 +1124,8 @@ to-report get-best-driver-proposal [sender cur-stops passengers-list]
     repeat (length cur-stops + 1) - index-1 [
       let temp-stops-proposal-2 temp-stops-proposal
       set temp-stops-proposal-2 insert-item index-2 temp-stops-proposal-2 dropoff
-      let temp-distances get-stops-distances temp-stops-proposal-2 patch-here
-      if (is-proposal-valid temp-stops-proposal-2 temp-distances passengers-list) [
+      let temp-distances (get-stops-distances temp-stops-proposal-2 patch-here)
+      if (is-proposal-valid temp-stops-proposal-2 temp-distances passengers-list driver-patches) [
         let temp-total-distance get-total-distance temp-distances
         ifelse best-total-distance = -1 [
           set best-proposal temp-stops-proposal-2
@@ -1158,10 +1154,10 @@ to-report get-driver-proposal-alone [sender cur-stops]
   report proposal
 end
 
-to-report is-proposal-valid [proposal proposal-distances passengers-list]
+to-report is-proposal-valid [proposal proposal-distances passengers-list driver-patches]
   let index 0
   repeat length passengers-list [
-    let passenger-distance get-passenger-travel-distance proposal proposal-distances (item index passenger-list)
+    let passenger-distance get-passenger-travel-distance proposal proposal-distances (item index passengers-list) driver-patches
     if (passenger-distance > [limit-travel-distance] of turtle (item index passengers-list)) [
       report false
     ]
@@ -1302,7 +1298,7 @@ num-drivers
 num-drivers
 1
 100
-12.0
+2.0
 1
 1
 NIL
@@ -1410,7 +1406,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-50.0
+5.0
 1
 1
 NIL
@@ -1423,7 +1419,7 @@ SWITCH
 454
 show_messages
 show_messages
-1
+0
 1
 -1000
 
