@@ -785,7 +785,7 @@ end
 
 ;; IDK
 to collect-msgs
-  (ifelse not is-processing? and ticks > collection-start-tick + 150 [
+  (ifelse not is-processing? and ticks > collection-start-tick + 75 [
     start-processing
   ] is-processing? [
     process-messages
