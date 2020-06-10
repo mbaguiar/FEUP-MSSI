@@ -862,7 +862,11 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
 end
 
 
-
+to process-message [msg]
+  let driver-number ([who] of one-of drivers)
+  send add-receiver driver-number add-content get-sender msg create-message "propose"
+  send add-receiver get-sender msg add-content driver-number create-message "propose"
+end
 
 ;; Sets driver's current path
 to set-path
@@ -1300,7 +1304,7 @@ num-drivers
 num-drivers
 1
 100
-27.0
+2.0
 1
 1
 NIL
@@ -1408,7 +1412,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-25.0
+5.0
 1
 1
 NIL
@@ -1555,7 +1559,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot total-travel-distance / total-number-passengers"
+"default" 1.0 0 -16777216 true "" "plot total-travel-distance / number-completed-trips"
 
 MONITOR
 1249

@@ -1234,7 +1234,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot total-travel-time / total-number-passengers"
+"default" 1.0 0 -16777216 true "" "plot total-travel-time / number-completed-trips"
 
 PLOT
 922
@@ -1304,7 +1304,7 @@ num-drivers
 num-drivers
 1
 100
-2.0
+20.0
 1
 1
 NIL
@@ -1412,7 +1412,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-5.0
+70.0
 1
 1
 NIL
@@ -1425,7 +1425,7 @@ SWITCH
 454
 show_messages
 show_messages
-0
+1
 1
 -1000
 
@@ -1477,7 +1477,7 @@ SWITCH
 416
 distributed
 distributed
-1
+0
 1
 -1000
 
@@ -1508,7 +1508,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot total-wait-time / total-number-passengers"
+"default" 1.0 0 -16777216 true "" "plot total-wait-time / number-completed-trips"
 
 PLOT
 1248
@@ -1526,7 +1526,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot total-ratio / total-number-passengers"
+"default" 1.0 0 -16777216 true "" "plot total-ratio / number-completed-trips"
 
 SLIDER
 12
@@ -1559,7 +1559,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot total-travel-distance / total-number-passengers"
+"default" 1.0 0 -16777216 true "" "plot total-travel-distance / number-completed-trips"
 
 MONITOR
 1249
