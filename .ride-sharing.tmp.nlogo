@@ -401,7 +401,7 @@ end
 
 ;; Run the simulation
 to go
-  if (ticks >= 15000) [stop]
+
   ask turtles [ set label who ]
 
   ;; Create the passengers turtles
