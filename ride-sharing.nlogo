@@ -826,8 +826,14 @@ end
 
 to-report get-proposals-for-message [msg]
   let proposal-passenger (read-from-string get-sender msg)
-  let proposals map [[proposal-driver] -> get-best-proposal-for-passenger-driver [who] of proposal-driver proposal-passenger] ([self] of drivers)
-  report filter [x -> not (x = "")] proposals
+  let proposals []
+  carefully [
+    set proposals map [[proposal-driver] -> get-best-proposal-for-passenger-driver [who] of proposal-driver proposal-passenger] ([self] of drivers)
+    set proposals filter [x -> not (x = "")] proposals
+  ][
+    set proposals []
+  ]
+  report proposals
 end
 
 to-report sort-proposal [p1 p2]

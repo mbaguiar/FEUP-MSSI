@@ -826,8 +826,14 @@ end
 
 to-report get-proposals-for-message [msg]
   let proposal-passenger (read-from-string get-sender msg)
-  let proposals map [[proposal-driver] -> get-best-proposal-for-passenger-driver [who] of proposal-driver proposal-passenger] ([self] of drivers)
-  report filter [x -> not (x = "")] proposals
+  let proposals []
+  carefully [
+    set proposals map [[proposal-driver] -> get-best-proposal-for-passenger-driver [who] of proposal-driver proposal-passenger] ([self] of drivers)
+    set proposals filter [x -> not (x = "")] proposals
+  ][
+    set proposals []
+  ]
+  report proposals
 end
 
 to-report sort-proposal [p1 p2]
@@ -842,7 +848,7 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
   let proposal []
   ifelse ([passengers-number] of turtle proposal-driver) + 1 < [capacity] of turtle proposal-driver [
     ifelse [share-ride?] of turtle proposal-passenger and not ([has-alone-passenger] of turtle proposal-driver) [
-      set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver [passenger-list] of turtle proposal-driver [num-pac
+      set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver [passenger-list] of turtle proposal-driver [num-patches] of turtle proposal-driver
       if proposal = [] [
         report ""
       ]
@@ -856,11 +862,7 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
 end
 
 
-to process-message [msg]
-  let driver-number ([who] of one-of drivers)
-  send add-receiver driver-number add-content get-sender msg create-message "propose"
-  send add-receiver get-sender msg add-content driver-number create-message "propose"
-end
+
 
 ;; Sets driver's current path
 to set-path
@@ -1298,7 +1300,7 @@ num-drivers
 num-drivers
 1
 100
-2.0
+27.0
 1
 1
 NIL
@@ -1406,7 +1408,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-5.0
+25.0
 1
 1
 NIL
