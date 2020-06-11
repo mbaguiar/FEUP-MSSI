@@ -709,8 +709,8 @@ to wait-for-messages-driver
     (ifelse get-performative msg = "propose" [
       set stops (item 0 get-content msg)
       ; set distances get-stops-distances stops patch-here
-      set passenger-list lput (item 1 get-content msg) passenger-list
-
+      set passenger-list fput (item 1 get-content msg) passenger-list
+      set-path
       remove-msg
     ] get-performative msg = "reject" [
       remove-msg
@@ -1161,7 +1161,7 @@ to-report get-driver-proposal-alone [sender cur-stops driver-number]
   let sender-number (read-from-string sender)
   set proposal lput (list [pick-up] of turtle sender-number sender-number "pickup") proposal
   set proposal lput (list [goal] of turtle sender-number sender-number "dropoff") proposal
-  let proposal-ticks last get-stops-ticks proposal [patch-here] of driver-number
+  let proposal-ticks last get-stops-ticks proposal [patch-here] of tdriver-number
   report list proposal proposal-ticks
 end
 
@@ -1344,7 +1344,7 @@ num-drivers
 num-drivers
 1
 100
-58.0
+20.0
 1
 1
 NIL
@@ -1355,7 +1355,7 @@ PLOT
 445
 1236
 609
-Percentage of drivers with max capacity
+Occupancy percentage
 Time
 Percentage
 0.0
@@ -1366,7 +1366,7 @@ true
 false
 "set-plot-y-range 0 100" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot (get-number-drivers-max / num-drivers) * 100"
+"default" 1.0 0 -16777216 true "" "plot (mean [num-in-car / (capacity - 1)] of drivers) * 100"
 
 BUTTON
 227
@@ -1452,7 +1452,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-36.0
+100.0
 1
 1
 NIL
@@ -1489,7 +1489,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-100.0
+70.0
 1
 1
 NIL
@@ -1504,7 +1504,7 @@ limit-time-threshold-percentage
 limit-time-threshold-percentage
 100
 500
-201.0
+156.0
 1
 1
 NIL
