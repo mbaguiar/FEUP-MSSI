@@ -661,9 +661,9 @@ to wait-for-messages-driver
     (ifelse get-performative msg = "callforproposal" and get-content msg = "share" and temp-passenger = -1 [
       ifelse (passengers-number + 1 < capacity) [
         ifelse has-alone-passenger [
-          set temp-proposal get-driver-proposal-alone sender stops
+          set temp-proposal get-driver-proposal-alone sender stops who
         ][
-          set temp-proposal get-best-driver-proposal sender stops passenger-list num-patches
+          set temp-proposal get-best-driver-proposal sender stops who
         ]
         ifelse not (temp-proposal = []) [
           ;let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
@@ -681,7 +681,7 @@ to wait-for-messages-driver
       remove-msg
     ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
       ifelse (passengers-number + 1 < capacity) [
-        set temp-proposal get-driver-proposal-alone sender stops
+        set temp-proposal get-driver-proposal-alone sender stops who
         ;let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
         let dropoff-ticks item 1 temp-proposal
         send add-content dropoff-ticks create-reply "propose" msg
@@ -709,7 +709,8 @@ to wait-for-messages-driver
     (ifelse get-performative msg = "propose" [
       set stops (item 0 get-content msg)
       ; set distances get-stops-distances stops patch-here
-      set passenger-list lput (item 1 get-content msg) passenger-list
+      set passenger-list fput (item 1 get-content msg) passenger-list
+      set-path
       remove-msg
     ] get-performative msg = "reject" [
       remove-msg
@@ -853,12 +854,13 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
   let proposal []
   ifelse ([passengers-number] of turtle proposal-driver) + 1 < [capacity] of turtle proposal-driver [
     ifelse [share-ride?] of turtle proposal-passenger and not ([has-alone-passenger] of turtle proposal-driver) [
-      set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver [passenger-list] of turtle proposal-driver [num-patches] of turtle proposal-driver
+      set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver proposal-driver
       if proposal = [] [
         report ""
       ]
     ][
-      set proposal get-driver-proposal-alone (word proposal-passenger) [stops] of turtle proposal-driver
+      show "i should not be here"
+      set proposal get-driver-proposal-alone (word proposal-passenger) [stops] of turtle proposal-driver proposal-driver
     ]
   ][
     report ""
@@ -1121,7 +1123,7 @@ to-report get-total-distance [stops-distances]
   report total-distance
 end
 
-to-report get-best-driver-proposal [sender cur-stops passengers-list driver-patches]
+to-report get-best-driver-proposal [sender cur-stops driver-number]
   let sender-number (read-from-string sender)
   let pickup (list [pick-up] of turtle sender-number sender-number "pickup")
   let dropoff (list [goal] of turtle sender-number sender-number "dropoff")
@@ -1137,12 +1139,14 @@ to-report get-best-driver-proposal [sender cur-stops passengers-list driver-patc
     set j i + 1
     repeat (length cur-stops + 1) - i [ ;; loop for dropoff
       let temp-dropoff-stops insert-item j temp-pickup-stops dropoff
-      let stops-ticks get-stops-ticks temp-dropoff-stops patch-here
-      let proposal-ticks item j stops-ticks
+      let stops-ticks get-stops-ticks temp-dropoff-stops [patch-here] of turtle driver-number
+      let proposal-ticks last stops-ticks
 
-      if is-proposal-valid temp-dropoff-stops stops-ticks and (best-proposal-ticks = -1 or proposal-ticks < best-proposal-ticks) [
+      if is-proposal-valid temp-dropoff-stops stops-ticks [
+        if (best-proposal-ticks = -1 or proposal-ticks < best-proposal-ticks) [
         set best-proposal temp-dropoff-stops
         set best-proposal-ticks proposal-ticks
+        ]
       ]
       set j j + 1
     ]
@@ -1152,12 +1156,12 @@ to-report get-best-driver-proposal [sender cur-stops passengers-list driver-patc
   report ifelse-value empty? best-proposal [[]] [list best-proposal best-proposal-ticks] ;; if no proposal send empty; else send [[proposal] dropoff-ticks]
 end
 
-to-report get-driver-proposal-alone [sender cur-stops]
+to-report get-driver-proposal-alone [sender cur-stops driver-number]
   let proposal cur-stops
   let sender-number (read-from-string sender)
   set proposal lput (list [pick-up] of turtle sender-number sender-number "pickup") proposal
   set proposal lput (list [goal] of turtle sender-number sender-number "dropoff") proposal
-  let proposal-ticks last get-stops-ticks proposal patch-here
+  let proposal-ticks last get-stops-ticks proposal [patch-here] of driver-number
   report list proposal proposal-ticks
 end
 
@@ -1194,11 +1198,11 @@ to-report is-proposal-valid [proposal-stops proposal-ticks]
     let stop-type item 2 curr-stop
 
     ifelse stop-type = "dropoff" [
-      if turtle passenger-number != nobody and curr-ticks > [max-dropoff-ticks] of turtle passenger-number [
+      if (turtle passenger-number != nobody) and (curr-ticks > [max-dropoff-ticks] of turtle passenger-number) [
         report false
       ]
     ][
-      if turtle passenger-number != nobody and curr-ticks > [max-pickup-ticks] of turtle passenger-number [
+      if (turtle passenger-number != nobody) and (curr-ticks > [max-pickup-ticks] of turtle passenger-number) [
         report false
       ]
     ]
@@ -1340,7 +1344,7 @@ num-drivers
 num-drivers
 1
 100
-20.0
+58.0
 1
 1
 NIL
@@ -1448,7 +1452,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-70.0
+36.0
 1
 1
 NIL
