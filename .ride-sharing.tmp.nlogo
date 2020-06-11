@@ -194,7 +194,7 @@ end
 
 ;; Setup if passenger wants to share ride or not
 to setup-ride-choice
-  ifelse ((random 100) + 1) < share-ride-probability
+  ifelse (random 100) < share-ride-probability
   [
     set share-ride? true
 
@@ -378,7 +378,7 @@ to setup-passengers
   set wait-before-die 0
   set num-tries 0
   set wait-tries 0
-  set max-dropoff-ticks floor (ticks + (random-float 1) * 300 + (2 * get-optimal-travel-time pick-up goal))
+  set max-dropoff-ticks floor (ticks + (random-float 1) * 300 + (2 * get-optimal-travel-time one-of ([neighbors4] of patch-here) with [member? self roads] goal))
 end
 
 ;; Initialize the dispatcher variables to appropriate values
@@ -680,8 +680,9 @@ to wait-for-messages-driver
     ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
       ifelse (passengers-number + 1 < capacity) [
         set temp-proposal get-driver-proposal-alone sender stops
-        let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
-        send add-content passenger-travel-distance create-reply "propose" msg
+        ;let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
+        let dropoff-ticks item 1 temp-proposal
+        send add-content dropoff-ticks create-reply "propose" msg
         set passengers-number passengers-number + 1
         set temp-passenger read-from-string sender
       ][
@@ -691,8 +692,7 @@ to wait-for-messages-driver
     ] get-performative msg = "accept" and temp-passenger = read-from-string sender [
       let number (read-from-string sender)
       set stops item 0 temp-proposal
-      show stops
-      set distances get-stops-distances stops patch-here
+      ;; set distances get-stops-distances stops patch-here
       set passenger-list fput read-from-string sender passenger-list
       ;;show stops
       set temp-passenger -1
@@ -946,7 +946,7 @@ to-report at-goal
     if member? patch-here [neighbors4] of goal [
       if (not empty? stops) [
         set stops remove-item 0 stops
-        set distances remove-item 0 distances
+        ;set distances remove-item 0 distances
       ]
       set-path
       report true
@@ -1070,6 +1070,7 @@ end
 to-report get-stops-distances [list-stops cur-patch]
   let list-distances []
   let temp-list []
+  show list-stops
   set temp-list get-path cur-patch (item 0 (item 0 list-stops))
   set list-distances lput length temp-list list-distances
   let index 0
@@ -1160,7 +1161,8 @@ to-report get-driver-proposal-alone [sender cur-stops]
   let sender-number (read-from-string sender)
   set proposal lput (list [pick-up] of turtle sender-number sender-number "pickup") proposal
   set proposal lput (list [goal] of turtle sender-number sender-number "dropoff") proposal
-  report proposal
+  let proposal-ticks last get-stops-ticks proposal patch-here
+  report list proposal proposal-ticks
 end
 
 to-report get-stops-ticks [stops-list curr-patch]
@@ -1171,10 +1173,11 @@ to-report get-stops-ticks [stops-list curr-patch]
   repeat length stops-list [
     let curr-stop item i stops-list
     let stop-patch item 0 curr-stop
-    let curr-stop-ticks t + (get-optimal-travel-time last-patch stop-patch)
+    let p get-path last-patch stop-patch
+    let curr-stop-ticks t +  floor (length p / speed-limit)
     set stops-ticks lput curr-stop-ticks stops-ticks
     set t curr-stop-ticks
-    set last-patch stop-patch
+    set last-patch last p
     set i i + 1
   ]
   report stops-ticks
@@ -1187,15 +1190,14 @@ end
 
 to-report is-proposal-valid [proposal-stops proposal-ticks]
   let i 0
-  repeat length proposal-stops[
-    print "is-proposal-valid
+  repeat length proposal-stops [
     let curr-stop item i proposal-stops
     let curr-ticks item i proposal-ticks
 
     let passenger-number item 1 curr-stop
     let stop-type item 2 curr-stop
 
-    if stop-type = "dropoff" and curr-ticks > [max-dropoff-ticks] of turtle passenger-number [
+    if stop-type = "dropoff" and turtle passenger-number != nobody and curr-ticks > [max-dropoff-ticks] of turtle passenger-number [
       report false
     ]
     set i i + 1
@@ -1294,7 +1296,7 @@ grid-size-y
 grid-size-y
 1
 9
-6.0
+9.0
 1
 1
 NIL
@@ -1309,7 +1311,7 @@ grid-size-x
 grid-size-x
 1
 9
-6.0
+9.0
 1
 1
 NIL
@@ -1335,7 +1337,7 @@ num-drivers
 num-drivers
 1
 100
-7.0
+20.0
 1
 1
 NIL
@@ -1443,7 +1445,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-7.0
+70.0
 1
 1
 NIL
@@ -1480,7 +1482,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-100.0
+80.0
 1
 1
 NIL
@@ -1568,7 +1570,7 @@ passenger-spawn-rate
 passenger-spawn-rate
 0.001
 1
-0.05
+0.103
 0.001
 1
 NIL
