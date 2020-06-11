@@ -71,7 +71,6 @@ passengers-own
   wait-time
   travel-time
   travel-distance
-  limit-travel-distance
   optimal-travel-distance
   share-ride?
   max-pickup-ticks
@@ -201,15 +200,6 @@ to setup-ride-choice
     set share-ride? false
     set color magenta
   ]
-end
-
-;; Setup max distance passengers is willing to accept for a trip
-to set-limit-travel-distance
-  let path get-path one-of ([neighbors4] of patch-here) with [member? self roads] goal
-  set optimal-travel-distance length path
-  set limit-travel-distance (length path) + ((length path) * (limit-time-threshold-percentage / 100))
-  ;;show "limit-travel-distance"
-  ;;show limit-travel-distance
 end
 
 ;; Set randomnly pickup patch of passenger
@@ -379,8 +369,12 @@ to setup-passengers
   set wait-tries 0
   let path get-path one-of ([neighbors4] of patch-here) with [member? self roads] goal
   set optimal-travel-distance length path
-  set max-pickup-ticks floor (ticks + (((random-float 2) + 1) * 500))
-  set max-dropoff-ticks floor (max-pickup-ticks + ((limit-time-threshold-percentage / 100) * get-optimal-travel-time one-of ([neighbors4] of patch-here) with [member? self roads] goal))
+  set-ticks-threshold
+end
+
+to set-ticks-threshold
+  set max-pickup-ticks floor (ticks + (((random-float 4) + 1) * pickup-time-base-value))
+  set max-dropoff-ticks floor (max-pickup-ticks + ((trip-time-threshold / 100) * get-optimal-travel-time one-of ([neighbors4] of patch-here) with [member? self roads] goal))
 end
 
 ;; Initialize the dispatcher variables to appropriate values
@@ -414,7 +408,6 @@ to go
     create-passengers 1
     [
       setup-goal
-      set-limit-travel-distance
       set color black
       setup-ride-choice
 
@@ -594,7 +587,9 @@ to wait-for-messages-passenger
     let sender get-sender msg
     if get-performative msg = "propose" [
       ifelse driver-car = nobody [
-        ifelse (get-content msg <= max-dropoff-ticks) [
+        let pickup-ticks first get-content msg
+        let dropoff-ticks item 1 get-content msg
+        ifelse (pickup-ticks <= max-pickup-ticks and dropoff-ticks <= max-dropoff-ticks) [
           ifelse share-ride? [
             set color orange
           ][
@@ -660,8 +655,8 @@ to wait-for-messages-driver
           set temp-proposal get-best-driver-proposal sender stops who
         ]
         ifelse not (temp-proposal = []) [
-          let dropoff-ticks item 1 temp-proposal
-          send add-content dropoff-ticks create-reply "propose" msg
+          let proposal-ticks bf temp-proposal
+          send add-content proposal-ticks create-reply "propose" msg
           set passengers-number passengers-number + 1
           set temp-passenger read-from-string sender
         ][
@@ -675,8 +670,8 @@ to wait-for-messages-driver
     ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
       ifelse (passengers-number + 1 < capacity) [
         set temp-proposal get-driver-proposal-alone sender stops who
-        let dropoff-ticks item 1 temp-proposal
-        send add-content dropoff-ticks create-reply "propose" msg
+        let proposal-ticks bf temp-proposal
+        send add-content proposal-ticks create-reply "propose" msg
         set passengers-number passengers-number + 1
         set temp-passenger read-from-string sender
       ][
@@ -758,6 +753,7 @@ to find-a-ride
   ][
     ;; show "restarting waiting for msgs"
     set temp-wait-time ticks
+    set-ticks-threshold
     set number-responses 0
     set response-received false
     add-intention "wait-for-messages-passenger" "response-was-received"
@@ -836,7 +832,7 @@ end
 to-report sort-proposal [p1 p2]
   let prop1 first p1
   let prop2 first p2
-  report (item 1 prop1) < (item 1 prop2)
+  report (last prop1) < (last prop2) ;; use last proposal ticks
 end
 
 to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passenger]
@@ -1051,7 +1047,9 @@ to-report get-best-driver-proposal [sender cur-stops driver-number]
   let dropoff (list [goal] of turtle sender-number sender-number "dropoff")
 
   let best-proposal []
-  let best-proposal-ticks -1
+  let best-proposal-pickup-ticks -1
+  let best-proposal-dropoff-ticks -1
+  let best-proposal-last-ticks -1
 
   let i 0 ;; pickup index
   let j 0 ;; dropoff index
@@ -1062,20 +1060,35 @@ to-report get-best-driver-proposal [sender cur-stops driver-number]
     repeat (length cur-stops + 1) - i [ ;; loop for dropoff
       let temp-dropoff-stops insert-item j temp-pickup-stops dropoff
       let stops-ticks get-stops-ticks temp-dropoff-stops [patch-here] of turtle driver-number
-      let proposal-ticks last stops-ticks
+
+      let proposal-pickup-ticks item i stops-ticks
+      let proposal-dropoff-ticks item j stops-ticks
+      let proposal-last-ticks last stops-ticks
 
       if is-proposal-valid temp-dropoff-stops stops-ticks [
-        if (best-proposal-ticks = -1 or proposal-ticks < best-proposal-ticks) [
-        set best-proposal temp-dropoff-stops
-        set best-proposal-ticks proposal-ticks
+        ifelse distributed [
+          if (best-proposal-dropoff-ticks = -1 or proposal-dropoff-ticks < best-proposal-dropoff-ticks) [
+            set best-proposal temp-dropoff-stops
+            set best-proposal-pickup-ticks proposal-pickup-ticks
+            set best-proposal-dropoff-ticks proposal-dropoff-ticks
+            set best-proposal-last-ticks proposal-last-ticks
+          ]
+        ][
+          if (best-proposal-last-ticks = -1 or proposal-last-ticks < best-proposal-last-ticks) [
+            set best-proposal temp-dropoff-stops
+            set best-proposal-pickup-ticks proposal-pickup-ticks
+            set best-proposal-dropoff-ticks proposal-dropoff-ticks
+            set best-proposal-last-ticks proposal-last-ticks
+          ]
         ]
+
       ]
       set j j + 1
     ]
     set i i + 1
   ]
 
-  report ifelse-value empty? best-proposal [[]] [list best-proposal best-proposal-ticks] ;; if no proposal send empty; else send [[proposal] dropoff-ticks]
+  report ifelse-value empty? best-proposal [[]] [(list best-proposal best-proposal-pickup-ticks best-proposal-dropoff-ticks best-proposal-last-ticks)]
 end
 
 to-report get-driver-proposal-alone [sender cur-stops driver-number]
@@ -1083,8 +1096,13 @@ to-report get-driver-proposal-alone [sender cur-stops driver-number]
   let sender-number (read-from-string sender)
   set proposal lput (list [pick-up] of turtle sender-number sender-number "pickup") proposal
   set proposal lput (list [goal] of turtle sender-number sender-number "dropoff") proposal
-  let proposal-ticks last get-stops-ticks proposal [patch-here] of turtle driver-number
-  report list proposal proposal-ticks
+  let stops-ticks get-stops-ticks proposal [patch-here] of turtle driver-number
+
+  let proposal-pickup-ticks last bl stops-ticks
+  let proposal-dropoff-ticks last stops-ticks
+  let proposal-last-ticks last stops-ticks
+
+  report (list proposal proposal-pickup-ticks proposal-dropoff-ticks proposal-last-ticks)
 end
 
 to-report get-stops-ticks [stops-list curr-patch]
@@ -1369,7 +1387,7 @@ num-max-passengers
 num-max-passengers
 0
 100
-100.0
+70.0
 1
 1
 NIL
@@ -1377,9 +1395,9 @@ HORIZONTAL
 
 SWITCH
 13
-421
+458
 170
-454
+491
 show_messages
 show_messages
 1
@@ -1388,9 +1406,9 @@ show_messages
 
 SWITCH
 13
-459
+496
 171
-492
+529
 show-intentions
 show-intentions
 1
@@ -1406,7 +1424,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-70.0
+80.0
 1
 1
 NIL
@@ -1417,11 +1435,11 @@ SLIDER
 300
 293
 333
-limit-time-threshold-percentage
-limit-time-threshold-percentage
+trip-time-threshold
+trip-time-threshold
 100
 500
-156.0
+232.0
 1
 1
 NIL
@@ -1429,9 +1447,9 @@ HORIZONTAL
 
 SWITCH
 13
-383
+420
 168
-416
+453
 distributed
 distributed
 0
@@ -1486,10 +1504,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot total-ratio / number-completed-trips"
 
 SLIDER
-12
-340
-292
-373
+13
+378
+293
+411
 passenger-spawn-rate
 passenger-spawn-rate
 0.001
@@ -1531,14 +1549,29 @@ number-cancel-trips
 
 SWITCH
 14
-498
+535
 146
-531
+568
 show-labels
 show-labels
 1
 1
 -1000
+
+SLIDER
+13
+339
+292
+372
+pickup-time-base-value
+pickup-time-base-value
+100
+500
+200.0
+50
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
