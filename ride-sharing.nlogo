@@ -75,6 +75,7 @@ passengers-own
   limit-travel-distance
   optimal-travel-distance
   share-ride?
+  max-pickup-ticks
   max-dropoff-ticks
 
   pick-up
@@ -378,7 +379,8 @@ to setup-passengers
   set wait-before-die 0
   set num-tries 0
   set wait-tries 0
-  set max-dropoff-ticks floor (ticks + (random-float 1) * 300 + (2 * get-optimal-travel-time one-of ([neighbors4] of patch-here) with [member? self roads] goal))
+  set max-pickup-ticks floor (ticks + (((random-float 2) + 1) * 500))
+  set max-dropoff-ticks floor (max-pickup-ticks + ((limit-time-threshold-percentage / 100) * get-optimal-travel-time one-of ([neighbors4] of patch-here) with [member? self roads] goal))
 end
 
 ;; Initialize the dispatcher variables to appropriate values
@@ -706,7 +708,7 @@ to wait-for-messages-driver
   ][
     (ifelse get-performative msg = "propose" [
       set stops (item 0 get-content msg)
-      set distances get-stops-distances stops patch-here
+      ; set distances get-stops-distances stops patch-here
       set passenger-list lput (item 1 get-content msg) passenger-list
       remove-msg
     ] get-performative msg = "reject" [
@@ -816,7 +818,7 @@ to process-messages
     if (not (member? proposal-driver taken-drivers)) and (member? (word proposal-passenger) waiting-processing) [
       set taken-drivers lput proposal-driver taken-drivers
       set waiting-processing remove (word proposal-passenger) waiting-processing
-      send add-receiver proposal-driver add-content (list(item 0 proposal) proposal-passenger) create-message "propose"
+      send add-receiver proposal-driver add-content (list first (item 0 proposal) proposal-passenger) create-message "propose"
       send add-receiver proposal-passenger add-content proposal-driver create-message "inform"
     ]
     set sorted-proposals remove-item 0 sorted-proposals
@@ -842,11 +844,9 @@ to-report get-proposals-for-message [msg]
 end
 
 to-report sort-proposal [p1 p2]
-  let distances1 get-stops-distances (item 0 p1) ([patch-here] of turtle (item 2 p1))
-  let distance1 get-passenger-travel-distance (item 0 p1) distances1 (item 1 p1) ([num-patches] of turtle (item 2 p1))
-  let distances2 get-stops-distances (item 0 p2) ([patch-here] of turtle (item 2 p2))
-  let distance2 get-passenger-travel-distance (item 0 p2) distances2 (item 1 p2) ([num-patches] of turtle (item 2 p2))
-  report distance1 < distance2
+  let prop1 first p1
+  let prop2 first p2
+  report (item 1 prop1) < (item 1 prop2)
 end
 
 to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passenger]
@@ -855,10 +855,6 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
     ifelse [share-ride?] of turtle proposal-passenger and not ([has-alone-passenger] of turtle proposal-driver) [
       set proposal get-best-driver-proposal (word proposal-passenger) [stops] of turtle proposal-driver [passenger-list] of turtle proposal-driver [num-patches] of turtle proposal-driver
       if proposal = [] [
-        report ""
-      ]
-      let passenger-travel-distance get-passenger-travel-distance proposal (get-stops-distances proposal [patch-here] of turtle proposal-driver) proposal-passenger [num-patches] of turtle proposal-driver
-      if passenger-travel-distance > ([limit-travel-distance] of turtle proposal-passenger) [
         report ""
       ]
     ][
@@ -1174,7 +1170,7 @@ to-report get-stops-ticks [stops-list curr-patch]
     let curr-stop item i stops-list
     let stop-patch item 0 curr-stop
     let p get-path last-patch stop-patch
-    let curr-stop-ticks t +  floor (length p / speed-limit)
+    let curr-stop-ticks t + floor (length p / speed-limit)
     set stops-ticks lput curr-stop-ticks stops-ticks
     set t curr-stop-ticks
     set last-patch last p
@@ -1197,9 +1193,16 @@ to-report is-proposal-valid [proposal-stops proposal-ticks]
     let passenger-number item 1 curr-stop
     let stop-type item 2 curr-stop
 
-    if stop-type = "dropoff" and turtle passenger-number != nobody and curr-ticks > [max-dropoff-ticks] of turtle passenger-number [
-      report false
+    ifelse stop-type = "dropoff" [
+      if turtle passenger-number != nobody and curr-ticks > [max-dropoff-ticks] of turtle passenger-number [
+        report false
+      ]
+    ][
+      if turtle passenger-number != nobody and curr-ticks > [max-pickup-ticks] of turtle passenger-number [
+        report false
+      ]
     ]
+
     set i i + 1
   ]
   report true
@@ -1482,7 +1485,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-80.0
+100.0
 1
 1
 NIL
@@ -1495,9 +1498,9 @@ SLIDER
 333
 limit-time-threshold-percentage
 limit-time-threshold-percentage
-0
+100
 500
-350.0
+201.0
 1
 1
 NIL
