@@ -13,7 +13,6 @@ globals
   phase                    ;; keeps track of the phase
   num-cars-stopped         ;; the number of cars that are stopped during a single pass thru the go procedure
   current-light            ;; the currently selected light
-  carpoolers
   goal-candidates
 
   ;; patch agentsets
@@ -82,7 +81,6 @@ passengers-own
   goal
 
   driver-car
-  carpooled
   response-received
   has-ride?
 
@@ -379,6 +377,8 @@ to setup-passengers
   set wait-before-die 0
   set num-tries 0
   set wait-tries 0
+  let path get-path one-of ([neighbors4] of patch-here) with [member? self roads] goal
+  set optimal-travel-distance length path
   set max-pickup-ticks floor (ticks + (((random-float 2) + 1) * 500))
   set max-dropoff-ticks floor (max-pickup-ticks + ((limit-time-threshold-percentage / 100) * get-optimal-travel-time one-of ([neighbors4] of patch-here) with [member? self roads] goal))
 end
@@ -406,7 +406,7 @@ end
 ;; Run the simulation
 to go
   if (ticks >= 15000) [stop]
-  ask turtles [ set label who ]
+  ifelse show-labels [ask turtles [ set label who ]][ask turtles [ set label "" ]]
 
   ;; Create the passengers turtles
   if (ticks mod ceiling (1 / passenger-spawn-rate)) = 0 and (count passengers) < num-max-passengers [
@@ -575,7 +575,6 @@ end
 
 ;; Passenger waits for messages and responds to drivers
 to wait-for-messages-passenger
-  ;; show "waiting for messages"
   set wait-tries wait-tries + 1
   if (wait-tries >= 600 and distributed) [
     set num-tries num-tries + 1
@@ -595,9 +594,7 @@ to wait-for-messages-passenger
     let sender get-sender msg
     if get-performative msg = "propose" [
       ifelse driver-car = nobody [
-        ;;show "proposed-time" show (item 1 (get-content msg))
         ifelse (get-content msg <= max-dropoff-ticks) [
-          ;; show "got a valid msg"
           ifelse share-ride? [
             set color orange
           ][
@@ -608,11 +605,9 @@ to wait-for-messages-passenger
           set wait-tries 0
           set response-received true
         ][
-          ;; show "got an invalid msg"
           send create-reply "reject" msg
         ]
       ][
-        ;; show "got an invalid msg"
         send create-reply "reject" msg
       ]
     ]
@@ -652,7 +647,6 @@ end
 to wait-for-messages-driver
   let msg get-message-no-remove
   if msg = "no_message" [stop]
-  ;;show msg
   let sender get-sender msg
 
   if (turtle (read-from-string sender) = nobody) [stop]
@@ -666,7 +660,6 @@ to wait-for-messages-driver
           set temp-proposal get-best-driver-proposal sender stops who
         ]
         ifelse not (temp-proposal = []) [
-          ;let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
           let dropoff-ticks item 1 temp-proposal
           send add-content dropoff-ticks create-reply "propose" msg
           set passengers-number passengers-number + 1
@@ -682,7 +675,6 @@ to wait-for-messages-driver
     ] get-performative msg = "callforproposal" and get-content msg = "alone" and temp-passenger = -1 [
       ifelse (passengers-number + 1 < capacity) [
         set temp-proposal get-driver-proposal-alone sender stops who
-        ;let passenger-travel-distance get-passenger-travel-distance temp-proposal (get-stops-distances temp-proposal patch-here) (read-from-string sender) num-patches
         let dropoff-ticks item 1 temp-proposal
         send add-content dropoff-ticks create-reply "propose" msg
         set passengers-number passengers-number + 1
@@ -694,9 +686,7 @@ to wait-for-messages-driver
     ] get-performative msg = "accept" and temp-passenger = read-from-string sender [
       let number (read-from-string sender)
       set stops item 0 temp-proposal
-      ;; set distances get-stops-distances stops patch-here
       set passenger-list fput read-from-string sender passenger-list
-      ;;show stops
       set temp-passenger -1
       set-path
       remove-msg
@@ -708,7 +698,6 @@ to wait-for-messages-driver
   ][
     (ifelse get-performative msg = "propose" [
       set stops (item 0 get-content msg)
-      ; set distances get-stops-distances stops patch-here
       set passenger-list fput (item 1 get-content msg) passenger-list
       set-path
       remove-msg
@@ -859,20 +848,12 @@ to-report get-best-proposal-for-passenger-driver [proposal-driver proposal-passe
         report ""
       ]
     ][
-      show "i should not be here"
       set proposal get-driver-proposal-alone (word proposal-passenger) [stops] of turtle proposal-driver proposal-driver
     ]
   ][
     report ""
   ]
   report (list proposal proposal-passenger proposal-driver)
-end
-
-
-to process-message [msg]
-  let driver-number ([who] of one-of drivers)
-  send add-receiver driver-number add-content get-sender msg create-message "propose"
-  send add-receiver get-sender msg add-content driver-number create-message "propose"
 end
 
 ;; Sets driver's current path
@@ -1064,65 +1045,6 @@ to-report get-number-drivers-max
   report num
 end
 
-;; Sets drivers' distances between stops list
-to-report get-stops-distances [list-stops cur-patch]
-  let list-distances []
-  let temp-list []
-  show list-stops
-  set temp-list get-path cur-patch (item 0 (item 0 list-stops))
-  set list-distances lput length temp-list list-distances
-  let index 0
-  repeat ((length list-stops) - 1) [
-    let temp-start one-of ([neighbors4] of (item 0 (item index list-stops))) with [member? self roads]
-    set temp-list get-path temp-start (item 0 (item (index + 1) list-stops))
-    set list-distances lput length temp-list list-distances
-    set index index + 1
-  ]
-  ;;show list-times
-  report list-distances
-end
-
-to-report get-passenger-travel-distance [driver-stops stop-distances sender driver-patches]
-  let index-pickup -1
-  let index-dropoff 0
-  let index 0
-  let total-distance 0
-  repeat length driver-stops [
-    if (item 1 (item index driver-stops)) = sender and (item 2 (item index driver-stops)) = "pickup" [
-      set index-pickup index
-    ]
-    if (item 1 (item index driver-stops)) = sender and (item 2 (item index driver-stops)) = "dropoff" [
-      set index-dropoff index
-    ]
-    set index index + 1
-  ]
-  ifelse not (index-pickup = -1)[
-    set index index-pickup
-    repeat index-dropoff - index-pickup [
-      set total-distance total-distance + (item index stop-distances)
-      set index index + 1
-    ]
-  ][
-    set index 0
-    set total-distance (driver-patches - [temp-travel-distance] of turtle sender)
-    repeat index-dropoff [
-      set total-distance total-distance + (item index stop-distances)
-      set index index + 1
-    ]
-  ]
-  report total-distance
-end
-
-to-report get-total-distance [stops-distances]
-  let index 0
-  let total-distance 0
-  repeat length stops-distances [
-    set total-distance total-distance + (item index stops-distances)
-    set index index + 1
-  ]
-  report total-distance
-end
-
 to-report get-best-driver-proposal [sender cur-stops driver-number]
   let sender-number (read-from-string sender)
   let pickup (list [pick-up] of turtle sender-number sender-number "pickup")
@@ -1222,11 +1144,6 @@ to-report has-alone-passenger
   ]
   report has-alone
 end
-
-
-
-
-
 
 ; Copyright 2003 Uri Wilensky.
 ; See Info tab for full copyright and license.
@@ -1470,10 +1387,10 @@ show_messages
 -1000
 
 SWITCH
-12
-460
-170
-493
+13
+459
+171
+492
 show-intentions
 show-intentions
 1
@@ -1611,6 +1528,17 @@ number-cancel-trips
 17
 1
 11
+
+SWITCH
+14
+498
+146
+531
+show-labels
+show-labels
+1
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
