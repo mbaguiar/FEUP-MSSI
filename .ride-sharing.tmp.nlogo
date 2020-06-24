@@ -400,7 +400,7 @@ end
 ;; Run the simulation
 to go
   if (ticks >= 15000) [
-    ;; export-all-plots "plots3-2.csv"
+    ;export-all-plots "plots3-2.csv"
     stop
   ]
   ifelse show-labels [ask turtles [ set label who ]][ask turtles [ set label "" ]]
