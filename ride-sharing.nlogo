@@ -399,7 +399,10 @@ end
 
 ;; Run the simulation
 to go
-  if (ticks >= 15000) [stop]
+  if (ticks >= 15000) [
+    export-all-plots "plots3-2.csv"
+    stop
+  ]
   ifelse show-labels [ask turtles [ set label who ]][ask turtles [ set label "" ]]
 
   ;; Create the passengers turtles
@@ -1279,7 +1282,7 @@ num-drivers
 num-drivers
 1
 100
-20.0
+40.0
 1
 1
 NIL
@@ -1424,7 +1427,7 @@ share-ride-probability
 share-ride-probability
 0
 100
-80.0
+40.0
 1
 1
 NIL
@@ -1439,7 +1442,7 @@ trip-time-threshold
 trip-time-threshold
 100
 500
-232.0
+200.0
 1
 1
 NIL
@@ -1512,7 +1515,7 @@ passenger-spawn-rate
 passenger-spawn-rate
 0.001
 1
-0.103
+0.1
 0.001
 1
 NIL
@@ -1572,6 +1575,72 @@ pickup-time-base-value
 1
 NIL
 HORIZONTAL
+
+MONITOR
+1569
+93
+1838
+138
+Ratio between shared and individual rides
+(number-shared-trips) / (number-individual-trips)
+17
+1
+11
+
+MONITOR
+1570
+149
+1691
+194
+Average wait time
+total-wait-time / number-completed-trips
+17
+1
+11
+
+MONITOR
+1570
+204
+1702
+249
+Average travel time
+total-travel-time / number-completed-trips
+17
+1
+11
+
+MONITOR
+1571
+260
+1722
+305
+Average ratio TD/OTD
+total-ratio / number-completed-trips
+17
+1
+11
+
+MONITOR
+1570
+313
+1725
+358
+Occupancy percentage
+(mean [num-in-car / (capacity - 1)] of drivers) * 100
+17
+1
+11
+
+MONITOR
+1571
+366
+1718
+411
+Average ride distance
+total-travel-distance / number-completed-trips
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
